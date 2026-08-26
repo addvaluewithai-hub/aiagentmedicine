@@ -1,8 +1,12 @@
+import type { MedicationPlanMutationSource } from '@/domain/medication-management';
 import { pauseMedicationPlan, resumeMedicationPlan } from '@/domain/medication-management';
 import { cancelDoseNotifications, replenishLocalReminderWindow } from '@/services/local-reminder-window';
 
-export async function pauseMedicationPlanReminders(planId: string) {
-  const result = pauseMedicationPlan(planId);
+export async function pauseMedicationPlanReminders(
+  planId: string,
+  source: MedicationPlanMutationSource = 'button'
+) {
+  const result = pauseMedicationPlan(planId, source);
   if (!result.changed) {
     return { changed: false, notificationCleanupFailed: false };
   }
@@ -17,8 +21,11 @@ export async function pauseMedicationPlanReminders(planId: string) {
   };
 }
 
-export async function resumeMedicationPlanReminders(planId: string) {
-  const changed = resumeMedicationPlan(planId);
+export async function resumeMedicationPlanReminders(
+  planId: string,
+  source: MedicationPlanMutationSource = 'button'
+) {
+  const changed = resumeMedicationPlan(planId, source);
   if (!changed) {
     return { changed: false, reminderRefreshFailed: false };
   }
