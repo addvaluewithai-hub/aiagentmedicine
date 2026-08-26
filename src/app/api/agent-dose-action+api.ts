@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { AgentPendingConfirmation } from '@/agent/agent-dose-action-schema';
 import {
   AgentDoseContextSchema,
   AgentDoseResponseSchema,
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
   const allowedDoseIds = new Set(parsed.data.doses.map((dose) => dose.doseId));
   const allowedPlans = new Map(parsed.data.plans.map((plan) => [plan.planId, plan]));
 
-  let canonicalPendingConfirmation = null;
+  let canonicalPendingConfirmation: AgentPendingConfirmation | null = null;
   if (parsed.data.pendingConfirmation) {
     const pendingPlan = allowedPlans.get(parsed.data.pendingConfirmation.planId);
     if (
@@ -81,7 +82,8 @@ export async function POST(request: Request) {
       planId: pendingPlan.planId,
       medicationName: pendingPlan.medicationName,
       strength: pendingPlan.strength,
-      reminderTimes: pendingPlan.reminderTimes
+      reminderTimes: pendingPlan.reminderTimes,
+      scheduleDays: pendingPlan.scheduleDays
     };
   }
 
@@ -103,7 +105,8 @@ export async function POST(request: Request) {
     medicationName: plan.medicationName,
     strength: plan.strength,
     status: plan.status,
-    reminderTimes: plan.reminderTimes
+    reminderTimes: plan.reminderTimes,
+    scheduleDays: plan.scheduleDays
   }));
 
   const historyText = parsed.data.history.length
@@ -224,7 +227,8 @@ Confirmed plan action examples:
       planId: plan.planId,
       medicationName: plan.medicationName,
       strength: plan.strength,
-      reminderTimes: plan.reminderTimes
+      reminderTimes: plan.reminderTimes,
+      scheduleDays: plan.scheduleDays
     };
   }
 
