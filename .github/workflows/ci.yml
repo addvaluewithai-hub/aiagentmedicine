@@ -25,15 +25,7 @@ jobs:
         run: npm run typecheck
 
       - name: Lint
-        run: npx expo lint -- --format json --output-file eslint-report.json
-
-      - name: Upload ESLint report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: eslint-report
-          path: eslint-report.json
-          if-no-files-found: ignore
+        run: npm run lint
 
       - name: Expo doctor
         run: npm run doctor
