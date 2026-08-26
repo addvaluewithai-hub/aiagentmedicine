@@ -13,6 +13,10 @@ export type GeneratedDose = {
   dueAt: number;
 };
 
+type DoseCandidate = GeneratedDose & {
+  medicationPlanId: string;
+};
+
 function parseScheduleDays(value: string | null): MedicationWeekday[] | null | undefined {
   if (value === null) return null;
 
@@ -52,7 +56,7 @@ export function generateRollingDoseOccurrences(input?: {
     .where(eq(medicationPlans.status, 'active'))
     .all();
 
-  const candidates: GeneratedDose[] = [];
+  const candidates: DoseCandidate[] = [];
   const candidateKeys = new Set<string>();
 
   for (const schedule of schedules) {
@@ -89,6 +93,7 @@ export function generateRollingDoseOccurrences(input?: {
       candidateKeys.add(key);
       candidates.push({
         doseId: createLocalId('dose'),
+        medicationPlanId: schedule.medicationPlanId,
         medicationName: schedule.medicationName,
         dueAt
       });
@@ -104,16 +109,9 @@ export function generateRollingDoseOccurrences(input?: {
   const now = Date.now();
   db.transaction((tx) => {
     for (const dose of candidates) {
-      const matchingSchedule = schedules.find((schedule) => {
-        const [hour, minute] = schedule.localTime.split(':').map(Number);
-        const date = new Date(dose.dueAt);
-        return schedule.medicationName === dose.medicationName && date.getHours() === hour && date.getMinutes() === minute;
-      });
-      if (!matchingSchedule) continue;
-
       tx.insert(doseOccurrences).values({
         id: dose.doseId,
-        medicationPlanId: matchingSchedule.medicationPlanId,
+        medicationPlanId: dose.medicationPlanId,
         dueAt: dose.dueAt,
         status: 'pending',
         createdAt: now,
@@ -122,5 +120,5 @@ export function generateRollingDoseOccurrences(input?: {
     }
   });
 
-  return candidates;
+  return candidates.map(({ medicationPlanId: _medicationPlanId, ...dose }) => dose);
 }
