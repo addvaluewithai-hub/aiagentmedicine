@@ -12,16 +12,6 @@ import {
   scheduleDoseReminder
 } from '@/services/notifications';
 
-function scheduledAttemptExists(doseId: string) {
-  return Boolean(db.select({ id: reminderAttempts.id })
-    .from(reminderAttempts)
-    .where(and(
-      eq(reminderAttempts.doseOccurrenceId, doseId),
-      eq(reminderAttempts.deliveryStatus, 'scheduled')
-    ))
-    .get());
-}
-
 function nextAttemptNumber(doseId: string) {
   const attempts = db.select({ attemptNumber: reminderAttempts.attemptNumber })
     .from(reminderAttempts)
@@ -115,7 +105,7 @@ export async function replenishLocalReminderWindow(input?: {
   let scheduled = 0;
 
   for (const dose of doses) {
-    if (nativeDoseIds.has(dose.doseId) || scheduledAttemptExists(dose.doseId)) continue;
+    if (nativeDoseIds.has(dose.doseId)) continue;
 
     try {
       await scheduleTrackedDoseReminder({
@@ -124,9 +114,10 @@ export async function replenishLocalReminderWindow(input?: {
         dueAt: new Date(dose.dueAt),
         body: 'Did you take it? You can mark it taken, snooze, or skip.'
       });
+      nativeDoseIds.add(dose.doseId);
       scheduled += 1;
     } catch {
-      // A later app open will retry any dose that has no scheduled attempt.
+      // A later app open will retry any dose missing from the native scheduler.
     }
   }
 
