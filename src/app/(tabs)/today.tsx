@@ -13,11 +13,11 @@ function formatDoseTime(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
-function statusLabel(dose: DoseRow) {
+function statusLabel(dose: DoseRow, now: number) {
   if (dose.status === 'taken') return 'Taken';
   if (dose.status === 'skipped') return 'Skipped';
   if (dose.status === 'missed') return 'Missed';
-  if (dose.snoozedUntil && dose.snoozedUntil > Date.now()) {
+  if (dose.snoozedUntil && dose.snoozedUntil > now) {
     return `Snoozed to ${formatDoseTime(dose.snoozedUntil)}`;
   }
   return 'Pending';
@@ -26,8 +26,10 @@ function statusLabel(dose: DoseRow) {
 export default function TodayScreen() {
   const [today, setToday] = useState<DoseRow[]>([]);
   const [upcoming, setUpcoming] = useState<DoseRow[]>([]);
+  const [now, setNow] = useState(0);
 
   const refresh = useCallback(() => {
+    setNow(Date.now());
     setToday(getTodayDoses());
     setUpcoming(getUpcomingPendingDoses(5));
   }, []);
@@ -37,6 +39,9 @@ export default function TodayScreen() {
   }, [refresh]));
 
   const nextDose = upcoming[0] ?? today.find((dose) => dose.status === 'pending') ?? null;
+  const nextDoseTime = nextDose?.snoozedUntil && nextDose.snoozedUntil > now
+    ? nextDose.snoozedUntil
+    : nextDose?.dueAt;
 
   function take(doseId: string) {
     markDoseTaken(doseId, 'button');
@@ -50,7 +55,12 @@ export default function TodayScreen() {
 
   async function snooze(dose: DoseRow) {
     const until = new Date(Date.now() + 15 * 60_000);
-    snoozeDose(dose.doseId, until, 'button');
+    const changed = snoozeDose(dose.doseId, until, 'button');
+    if (!changed) {
+      refresh();
+      return;
+    }
+
     await scheduleDoseReminder({
       doseId: dose.doseId,
       title: `Time for ${dose.medicationName}`,
@@ -86,9 +96,7 @@ export default function TodayScreen() {
             <Text className="text-base text-muted">
               {[nextDose.strength, nextDose.doseAmount].filter(Boolean).join(' · ') || 'Dose details saved'}
             </Text>
-            <Text className="text-lg font-semibold text-brand">
-              {formatDoseTime(nextDose.snoozedUntil && nextDose.snoozedUntil > Date.now() ? nextDose.snoozedUntil : nextDose.dueAt)}
-            </Text>
+            {nextDoseTime ? <Text className="text-lg font-semibold text-brand">{formatDoseTime(nextDoseTime)}</Text> : null}
             {nextDose.status === 'pending' ? (
               <View className="mt-2 flex-row gap-2">
                 <Pressable onPress={() => take(nextDose.doseId)} className="flex-1 items-center rounded-2xl bg-brand px-3 py-3">
@@ -122,7 +130,7 @@ export default function TodayScreen() {
           <View key={dose.doseId} className="flex-row items-center justify-between gap-4 rounded-2xl bg-white p-4">
             <View className="flex-1">
               <Text selectable className="font-semibold text-ink">{dose.medicationName}</Text>
-              <Text className="mt-1 text-sm text-muted">{formatDoseTime(dose.dueAt)} · {statusLabel(dose)}</Text>
+              <Text className="mt-1 text-sm text-muted">{formatDoseTime(dose.dueAt)} · {statusLabel(dose, now)}</Text>
             </View>
             {dose.status === 'pending' ? (
               <Pressable onPress={() => take(dose.doseId)} className="rounded-xl bg-brand/10 px-3 py-2">
