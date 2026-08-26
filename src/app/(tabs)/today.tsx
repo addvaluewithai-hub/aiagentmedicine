@@ -82,11 +82,18 @@ export default function TodayScreen() {
           <Text className="text-3xl font-bold text-ink">Today</Text>
           <Text className="mt-1 text-muted">Your local medication timeline.</Text>
         </View>
-        <Link href="/settings" asChild>
-          <Pressable className="rounded-full bg-white px-4 py-2">
-            <Text className="font-semibold text-ink">Settings</Text>
-          </Pressable>
-        </Link>
+        <View className="flex-row gap-2">
+          <Link href="/history" asChild>
+            <Pressable className="rounded-full bg-white px-4 py-2">
+              <Text className="font-semibold text-ink">History</Text>
+            </Pressable>
+          </Link>
+          <Link href="/settings" asChild>
+            <Pressable className="rounded-full bg-white px-4 py-2">
+              <Text className="font-semibold text-ink">Settings</Text>
+            </Pressable>
+          </Link>
+        </View>
       </View>
 
       <View className="gap-3 rounded-card bg-white p-5">

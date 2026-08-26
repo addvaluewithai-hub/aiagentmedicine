@@ -1,4 +1,4 @@
-import { and, eq, gte, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, lte, ne, or } from 'drizzle-orm';
 
 import { db, initializeDatabase } from '@/db/client';
 import {
@@ -18,12 +18,37 @@ export type DoseRow = {
   doseAmount: string | null;
 };
 
+export type DoseHistoryRow = DoseRow & {
+  takenAt: number | null;
+  skippedAt: number | null;
+  resolutionSource: string | null;
+};
+
 function baseDoseQuery() {
   return db.select({
     doseId: doseOccurrences.id,
     dueAt: doseOccurrences.dueAt,
     status: doseOccurrences.status,
     snoozedUntil: doseOccurrences.snoozedUntil,
+    medicationName: medications.displayName,
+    strength: medications.strengthText,
+    doseAmount: medicationInstructions.doseAmountText
+  })
+    .from(doseOccurrences)
+    .innerJoin(medicationPlans, eq(doseOccurrences.medicationPlanId, medicationPlans.id))
+    .innerJoin(medications, eq(medicationPlans.medicationId, medications.id))
+    .leftJoin(medicationInstructions, eq(medicationPlans.instructionId, medicationInstructions.id));
+}
+
+function historyDoseQuery() {
+  return db.select({
+    doseId: doseOccurrences.id,
+    dueAt: doseOccurrences.dueAt,
+    status: doseOccurrences.status,
+    snoozedUntil: doseOccurrences.snoozedUntil,
+    takenAt: doseOccurrences.takenAt,
+    skippedAt: doseOccurrences.skippedAt,
+    resolutionSource: doseOccurrences.resolutionSource,
     medicationName: medications.displayName,
     strength: medications.strengthText,
     doseAmount: medicationInstructions.doseAmountText
@@ -83,5 +108,20 @@ export function getTodayDoses(): DoseRow[] {
   return baseDoseQuery()
     .where(and(gte(doseOccurrences.dueAt, start.getTime()), lt(doseOccurrences.dueAt, end.getTime())))
     .orderBy(doseOccurrences.dueAt)
+    .all();
+}
+
+export function getDoseHistory(limit = 60): DoseHistoryRow[] {
+  initializeDatabase();
+  const safeLimit = Math.min(Math.max(limit, 1), 200);
+  const now = Date.now();
+
+  return historyDoseQuery()
+    .where(or(
+      lte(doseOccurrences.dueAt, now),
+      ne(doseOccurrences.status, 'pending')
+    ))
+    .orderBy(desc(doseOccurrences.dueAt))
+    .limit(safeLimit)
     .all();
 }
