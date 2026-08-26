@@ -21,6 +21,12 @@ function nextLocalOccurrence(localTime: string, from = new Date()) {
   return candidate;
 }
 
+export type CommittedDose = {
+  doseId: string;
+  medicationName: string;
+  dueAt: number;
+};
+
 export function commitMedicationDraft(input: MedicationDraft) {
   initializeDatabase();
   const draft = MedicationDraftSchema.parse(input);
@@ -30,7 +36,7 @@ export function commitMedicationDraft(input: MedicationDraft) {
 
   const now = Date.now();
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  const doseIds: string[] = [];
+  const doses: CommittedDose[] = [];
 
   db.transaction((tx) => {
     for (const item of draft.medications) {
@@ -80,7 +86,7 @@ export function commitMedicationDraft(input: MedicationDraft) {
 
         const doseId = createLocalId('dose');
         const dueAt = nextLocalOccurrence(localTime).getTime();
-        doseIds.push(doseId);
+        doses.push({ doseId, medicationName: item.name, dueAt });
         tx.insert(doseOccurrences).values({
           id: doseId,
           medicationPlanId: planId,
@@ -99,11 +105,11 @@ export function commitMedicationDraft(input: MedicationDraft) {
       entityId: createLocalId('confirmation'),
       payloadJson: JSON.stringify({
         medicationCount: draft.medications.length,
-        doseCount: doseIds.length
+        doseCount: doses.length
       }),
       createdAt: now
     }).run();
   });
 
-  return { doseIds };
+  return { doses };
 }
