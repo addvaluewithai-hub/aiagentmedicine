@@ -24,10 +24,18 @@ export default function ReviewPlanScreen() {
     if (!draft || !ready || isConfirming) return;
     setIsConfirming(true);
 
+    let doses: ReturnType<typeof commitMedicationDraft>['doses'];
     try {
-      const { doses } = commitMedicationDraft(draft);
+      ({ doses } = commitMedicationDraft(draft));
       clearOnboardingDraft();
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : 'unknown-error';
+      Alert.alert('Could not save the plan', `No medication plan was saved. ${detail}`);
+      setIsConfirming(false);
+      return;
+    }
 
+    try {
       await configureMedicationNotifications();
       const notificationsAllowed = await ensureMedicationNotificationPermission();
 
@@ -43,7 +51,7 @@ export default function ReviewPlanScreen() {
         if (failedCount > 0) {
           Alert.alert(
             'Plan saved',
-            `${failedCount} reminder${failedCount === 1 ? '' : 's'} could not be scheduled. We’ll surface notification health in Settings next.`
+            `${failedCount} reminder${failedCount === 1 ? '' : 's'} could not be scheduled. Your medication plan is safe on this device.`
           );
         }
       } else {
@@ -52,13 +60,14 @@ export default function ReviewPlanScreen() {
           'Your medication plan is stored on this device, but reminders cannot appear until notification permission is enabled.'
         );
       }
-
-      router.replace('/(tabs)/today');
-    } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : 'unknown-error';
-      Alert.alert('Could not save the plan', `Nothing new was scheduled. ${detail}`);
-      setIsConfirming(false);
+    } catch {
+      Alert.alert(
+        'Plan saved, reminders need attention',
+        'Your medication plan is stored on this device, but notification setup did not finish. You can continue using the app and fix reminder permissions later.'
+      );
     }
+
+    router.replace('/(tabs)/today');
   }
 
   if (!draft) {
