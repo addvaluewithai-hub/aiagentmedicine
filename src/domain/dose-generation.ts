@@ -120,5 +120,9 @@ export function generateRollingDoseOccurrences(input?: {
     }
   });
 
-  return candidates.map(({ medicationPlanId: _medicationPlanId, ...dose }) => dose);
+  return candidates.map((dose) => ({
+    doseId: dose.doseId,
+    medicationName: dose.medicationName,
+    dueAt: dose.dueAt
+  }));
 }
