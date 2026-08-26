@@ -11,7 +11,6 @@ const RequestSchema = z.object({
   text: z.string().trim().min(1).max(2_000),
   doses: z.array(AgentDoseContextSchema).max(20),
   history: z.array(AgentHistoryMessageSchema).max(8).default([]),
-  now: z.number().int().positive(),
   timeZone: z.string().trim().min(1).max(100)
 });
 
@@ -55,6 +54,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'invalid-request' }, { status: 400 });
   }
 
+  const serverNow = Date.now();
   const allowedDoseIds = new Set(parsed.data.doses.map((dose) => dose.doseId));
   const doseContext = parsed.data.doses.map((dose) => ({
     doseId: dose.doseId,
@@ -103,7 +103,7 @@ Return JSON only in exactly one of these forms:
 {"assistantMessage":"string","toolCall":{"name":"snooze_dose","doseId":"string","minutes":30}}
 {"assistantMessage":"string","toolCall":{"name":"skip_dose","doseId":"string"}}`;
 
-  const userPayload = `CURRENT_TIME_EPOCH_MS: ${parsed.data.now}\nTIME_ZONE: ${parsed.data.timeZone}\nCURRENT_DOSES:\n${JSON.stringify(doseContext)}\n\nRECENT_CONVERSATION:\n${historyText}\n\nUSER_MESSAGE:\n${parsed.data.text}`;
+  const userPayload = `CURRENT_TIME_EPOCH_MS: ${serverNow}\nTIME_ZONE: ${parsed.data.timeZone}\nCURRENT_DOSES:\n${JSON.stringify(doseContext)}\n\nRECENT_CONVERSATION:\n${historyText}\n\nUSER_MESSAGE:\n${parsed.data.text}`;
 
   const routed = await routeModel({
     apiKey: process.env.AI_API,
