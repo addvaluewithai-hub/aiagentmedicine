@@ -7,7 +7,7 @@ import type {
 } from '@/agent/agent-dose-action-schema';
 import { executeDoseAgentTool } from '@/agent/execute-dose-tool';
 import { executePlanAgentTool } from '@/agent/execute-plan-tool';
-import { getAgentRelevantPendingDoses } from '@/domain/dose-queries';
+import { getAgentCorrectableDoses, getAgentRelevantPendingDoses } from '@/domain/dose-queries';
 import { getMedicationPlanSummaries } from '@/domain/medication-management';
 import { usePushToTalk } from '@/hooks/use-push-to-talk';
 import { runMedicationAgent } from '@/services/ai-gateway';
@@ -17,7 +17,7 @@ type ChatMessage = AgentHistoryMessage;
 const quickActions = [
   'I took it',
   'Remind me in 30 minutes',
-  'Skip this dose',
+  'I marked it taken by mistake',
   'Pause medication reminders'
 ] as const;
 
@@ -48,7 +48,7 @@ export default function AgentScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      text: 'Tell me what you want to do with your medication reminders. I can log dose actions, snooze reminders, or manage confirmed reminder plans.'
+      text: 'Tell me what you want to do with your medication reminders. I can log dose actions, correct recent app records, snooze reminders, or manage confirmed reminder plans.'
     }
   ]);
   const [input, setInput] = useState('');
@@ -69,6 +69,18 @@ export default function AgentScreen() {
       strength: dose.strength,
       doseAmount: dose.doseAmount
     }));
+    const correctableDoses = getAgentCorrectableDoses().flatMap((dose) => {
+      if (dose.status !== 'taken' && dose.status !== 'skipped') return [];
+      return [{
+        doseId: dose.doseId,
+        dueAt: dose.dueAt,
+        status: dose.status,
+        resolvedAt: dose.status === 'taken' ? dose.takenAt : dose.skippedAt,
+        medicationName: dose.medicationName,
+        strength: dose.strength,
+        doseAmount: dose.doseAmount
+      }];
+    });
     const plans = getMedicationPlanSummaries().map((plan) => ({
       planId: plan.planId,
       medicationName: plan.medicationName,
@@ -87,6 +99,7 @@ export default function AgentScreen() {
       const response = await runMedicationAgent({
         text,
         doses,
+        correctableDoses,
         plans,
         history,
         pendingConfirmation,
@@ -102,7 +115,7 @@ export default function AgentScreen() {
         if ('doseId' in response.toolCall) {
           const execution = await executeDoseAgentTool(response.toolCall);
           if (!execution.ok) {
-            assistantText = 'That dose changed before I could update it. I refreshed the local state; tell me what you want to do now.';
+            assistantText = 'That dose record changed before I could update it. I refreshed the local state; tell me what you want to do now.';
           } else if (
             response.toolCall.name === 'snooze_dose' &&
             execution.notificationScheduled === false
@@ -132,7 +145,7 @@ export default function AgentScreen() {
         setMessages((current) => [...current, { role: 'assistant', text: fallbackText }]);
         setError(null);
       } else {
-        const fallbackText = 'I could not reach the agent right now. Your medication data was not changed. You can still use Today and Medications directly.';
+        const fallbackText = 'I could not reach the agent right now. Your medication data was not changed. You can still use Today, History, and Medications directly.';
         setMessages((current) => [...current, { role: 'assistant', text: fallbackText }]);
         setError(`Agent unavailable (${detail}).`);
       }
@@ -223,7 +236,7 @@ export default function AgentScreen() {
     >
       <View className="gap-2">
         <Text className="text-3xl font-bold text-ink">Agent</Text>
-        <Text className="leading-6 text-muted">Say or type what happened. Dose actions can execute directly; reminder-plan changes always require confirmation first.</Text>
+        <Text className="leading-6 text-muted">Say or type what happened. Dose actions and record corrections can execute directly; reminder-plan changes always require confirmation first.</Text>
       </View>
 
       <View className="gap-3">
@@ -293,7 +306,7 @@ export default function AgentScreen() {
           value={input}
           onChangeText={setInput}
           editable={!isBusy && !voice.isRecording}
-          placeholder="Tell me: I took it, remind me in 30 minutes, pause my reminders…"
+          placeholder="Tell me: I took it, I marked it wrong, remind me later…"
           multiline
           className="min-h-24 rounded-2xl bg-canvas px-4 py-3 text-base text-ink"
           textAlignVertical="top"
