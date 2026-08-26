@@ -30,8 +30,7 @@ export default function AgentScreen() {
     if (!text || isSending) return;
 
     const history = messages.slice(-8);
-    const now = Date.now();
-    const doses = getAgentRelevantPendingDoses({ now }).map((dose) => ({
+    const doses = getAgentRelevantPendingDoses().map((dose) => ({
       doseId: dose.doseId,
       dueAt: dose.dueAt,
       snoozedUntil: dose.snoozedUntil,
@@ -50,7 +49,6 @@ export default function AgentScreen() {
         text,
         doses,
         history,
-        now,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
       });
 
