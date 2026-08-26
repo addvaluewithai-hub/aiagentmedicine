@@ -1,3 +1,11 @@
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState
+} from 'expo-audio';
+import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -9,7 +17,7 @@ import {
   type MedicationDraft
 } from '@/ai/medication-draft-schema';
 import { setOnboardingDraft } from '@/features/onboarding/draft-store';
-import { extractMedication } from '@/services/ai-gateway';
+import { extractMedication, transcribeAudio } from '@/services/ai-gateway';
 
 const entryActions = [
   { id: 'camera', label: 'Take photo', icon: '📷' },
@@ -17,9 +25,10 @@ const entryActions = [
   { id: 'voice', label: 'Speak', icon: '🎙️' }
 ] as const;
 
-type SupportedMime = 'image/jpeg' | 'image/png' | 'image/webp';
+type SupportedImageMime = 'image/jpeg' | 'image/png' | 'image/webp';
+type SupportedAudioMime = 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audio/webm' | 'audio/mpeg' | 'audio/mp3';
 
-function normalizeMime(mimeType: string | undefined, uri: string): SupportedMime {
+function normalizeImageMime(mimeType: string | undefined, uri: string): SupportedImageMime {
   if (mimeType === 'image/png' || mimeType === 'image/webp' || mimeType === 'image/jpeg') {
     return mimeType;
   }
@@ -28,19 +37,39 @@ function normalizeMime(mimeType: string | undefined, uri: string): SupportedMime
   return 'image/jpeg';
 }
 
+function normalizeAudioMime(mimeType: string | undefined, uri: string): SupportedAudioMime {
+  if (
+    mimeType === 'audio/m4a' ||
+    mimeType === 'audio/mp4' ||
+    mimeType === 'audio/aac' ||
+    mimeType === 'audio/webm' ||
+    mimeType === 'audio/mpeg' ||
+    mimeType === 'audio/mp3'
+  ) {
+    return mimeType;
+  }
+  if (uri.toLowerCase().endsWith('.webm')) return 'audio/webm';
+  if (uri.toLowerCase().endsWith('.aac')) return 'audio/aac';
+  if (uri.toLowerCase().endsWith('.mp3')) return 'audio/mpeg';
+  return 'audio/mp4';
+}
+
 export default function MedicationSetupScreen() {
   const router = useRouter();
+  const audioRecorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder, 250);
   const [message, setMessage] = useState('');
   const [sourceUri, setSourceUri] = useState<string | null>(null);
   const [draft, setDraft] = useState<MedicationDraft | null>(null);
   const [assistantMessage, setAssistantMessage] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function analyze(input: {
     text?: string;
     imageBase64?: string;
-    mimeType?: SupportedMime;
+    mimeType?: SupportedImageMime;
   }) {
     setIsSending(true);
     setError(null);
@@ -61,9 +90,57 @@ export default function MedicationSetupScreen() {
     }
   }
 
+  async function toggleVoice() {
+    if (recorderState.isRecording) {
+      setIsTranscribing(true);
+      setError(null);
+      try {
+        await audioRecorder.stop();
+        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+
+        const uri = audioRecorder.uri;
+        if (!uri) throw new Error('recording-file-missing');
+
+        const file = new File(uri);
+        if (!file.size) throw new Error('recording-file-empty');
+        if (file.size > 8_000_000) throw new Error('recording-too-large');
+
+        const transcriptResult = await transcribeAudio({
+          audioBase64: await file.base64(),
+          mimeType: normalizeAudioMime(file.type, uri)
+        });
+
+        setMessage(transcriptResult.transcript);
+        await analyze({ text: transcriptResult.transcript });
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : 'unknown-error';
+        setError(`I couldn't transcribe that recording (${detail}). You can try again or type it instead.`);
+      } finally {
+        setIsTranscribing(false);
+      }
+      return;
+    }
+
+    const permission = await requestRecordingPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Microphone permission needed', 'You can still add or clarify medications with a photo or text.');
+      return;
+    }
+
+    try {
+      setError(null);
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : 'unknown-error';
+      setError(`I couldn't start recording (${detail}).`);
+    }
+  }
+
   async function chooseSource(id: (typeof entryActions)[number]['id']) {
     if (id === 'voice') {
-      Alert.alert('Voice is next', 'Push-to-talk is the next spike. Text and photos are live in this slice.');
+      await toggleVoice();
       return;
     }
 
@@ -91,13 +168,13 @@ export default function MedicationSetupScreen() {
     await analyze({
       text: message.trim() || undefined,
       imageBase64: asset.base64,
-      mimeType: normalizeMime(asset.mimeType, asset.uri)
+      mimeType: normalizeImageMime(asset.mimeType, asset.uri)
     });
   }
 
   async function sendText() {
     const text = message.trim();
-    if (!text || isSending) return;
+    if (!text || isSending || isTranscribing) return;
     await analyze({ text });
   }
 
@@ -108,6 +185,8 @@ export default function MedicationSetupScreen() {
   }
 
   const ready = draft ? isMedicationDraftReady(draft) : false;
+  const isBusy = isSending || isTranscribing;
+  const recordingSeconds = Math.max(0, Math.ceil(recorderState.durationMillis / 1000));
 
   return (
     <ScrollView
@@ -118,21 +197,27 @@ export default function MedicationSetupScreen() {
     >
       <View className="gap-2">
         <Text className="text-2xl font-bold text-ink">Show me or tell me.</Text>
-        <Text className="text-base leading-6 text-muted">No forms. Add a medicine box, prescription, or plain text. I’ll ask only for what’s missing.</Text>
+        <Text className="text-base leading-6 text-muted">No forms. Add a medicine box, prescription, voice note, or plain text. I’ll ask only for what’s missing.</Text>
       </View>
 
       <View className="flex-row gap-3">
-        {entryActions.map((action) => (
-          <Pressable
-            key={action.id}
-            disabled={isSending}
-            onPress={() => chooseSource(action.id)}
-            className="flex-1 items-center gap-2 rounded-card bg-white px-2 py-5 active:opacity-70 disabled:opacity-40"
-          >
-            <Text className="text-2xl">{action.icon}</Text>
-            <Text className="text-center text-sm font-semibold text-ink">{action.label}</Text>
-          </Pressable>
-        ))}
+        {entryActions.map((action) => {
+          const isVoice = action.id === 'voice';
+          const recording = isVoice && recorderState.isRecording;
+          return (
+            <Pressable
+              key={action.id}
+              disabled={isBusy && !recording}
+              onPress={() => chooseSource(action.id)}
+              className={`flex-1 items-center gap-2 rounded-card px-2 py-5 active:opacity-70 disabled:opacity-40 ${recording ? 'bg-red-50' : 'bg-white'}`}
+            >
+              <Text className="text-2xl">{recording ? '⏹️' : action.icon}</Text>
+              <Text className="text-center text-sm font-semibold text-ink">
+                {recording ? `Stop · ${recordingSeconds}s` : isVoice && isTranscribing ? 'Transcribing…' : action.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {sourceUri ? (
@@ -153,6 +238,11 @@ export default function MedicationSetupScreen() {
         <View className="gap-3">
           {draft.medications.map((item, index) => {
             const blocking = getMedicationBlockingFields(item);
+            const scheduleText = item.scheduleDays === null
+              ? 'Every day'
+              : item.scheduleDays?.length
+                ? item.scheduleDays.join(', ')
+                : 'Needs clarification';
             return (
               <View key={`${item.name ?? 'medication'}-${index}`} className="gap-2 rounded-card bg-white p-4">
                 <View className="flex-row items-center justify-between gap-3">
@@ -164,6 +254,7 @@ export default function MedicationSetupScreen() {
                 <Text selectable className="text-muted">Strength: {item.strength ?? '—'}</Text>
                 <Text selectable className="text-muted">Dose: {item.doseAmount ?? '—'}</Text>
                 <Text selectable className="text-muted">Frequency: {item.frequency ?? '—'}</Text>
+                <Text selectable className="text-muted">Days: {scheduleText}</Text>
                 <Text selectable className="text-muted">Reminder times: {item.reminderTimes.length ? item.reminderTimes.join(', ') : '—'}</Text>
                 {blocking.length ? (
                   <Text selectable className="text-sm text-amber-700">Still needed: {blocking.join(', ')}</Text>
@@ -187,12 +278,12 @@ export default function MedicationSetupScreen() {
           onChangeText={setMessage}
           placeholder={draft ? 'Example: I take it at 8 AM and 8 PM' : 'Example: I take metformin 500 mg, one tablet twice a day at 8 AM and 8 PM'}
           multiline
-          editable={!isSending}
+          editable={!isBusy && !recorderState.isRecording}
           className="min-h-28 rounded-2xl bg-canvas px-4 py-3 text-base text-ink"
           textAlignVertical="top"
         />
         <Pressable
-          disabled={!message.trim() || isSending}
+          disabled={!message.trim() || isBusy || recorderState.isRecording}
           onPress={sendText}
           className="items-center rounded-2xl bg-brand px-4 py-3 disabled:opacity-40"
         >
@@ -202,7 +293,7 @@ export default function MedicationSetupScreen() {
 
       {draft ? (
         <Pressable
-          disabled={!ready || isSending}
+          disabled={!ready || isBusy || recorderState.isRecording}
           onPress={reviewDraft}
           className="items-center rounded-2xl bg-ink px-4 py-4 disabled:opacity-30"
         >
