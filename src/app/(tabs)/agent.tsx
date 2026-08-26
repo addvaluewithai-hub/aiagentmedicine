@@ -27,6 +27,16 @@ function planConfirmationLabel(pending: AgentPendingConfirmation) {
     : `Resume reminders for ${pending.medicationName}?`;
 }
 
+function planConfirmationDetails(pending: AgentPendingConfirmation) {
+  const details = [
+    pending.strength,
+    pending.reminderTimes.length
+      ? `Reminders: ${pending.reminderTimes.join(', ')}`
+      : 'No reminder times saved'
+  ];
+  return details.filter(Boolean).join(' · ');
+}
+
 export default function AgentScreen() {
   const voice = usePushToTalk();
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -231,6 +241,7 @@ export default function AgentScreen() {
         <View className="gap-3 rounded-card border border-amber-200 bg-amber-50 p-4">
           <Text className="text-sm font-semibold uppercase tracking-wide text-amber-800">Confirm reminder change</Text>
           <Text selectable className="text-lg font-bold text-ink">{planConfirmationLabel(pendingConfirmation)}</Text>
+          <Text selectable className="text-sm font-medium text-ink">{planConfirmationDetails(pendingConfirmation)}</Text>
           <Text className="text-sm leading-5 text-muted">This changes app reminders only. It does not change the medication instructions you recorded.</Text>
           <View className="flex-row gap-3">
             <Pressable
