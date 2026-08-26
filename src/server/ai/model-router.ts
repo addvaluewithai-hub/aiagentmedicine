@@ -91,6 +91,7 @@ export async function routeModel(input: {
   system: string;
   parts: GeminiPart[];
   task: string;
+  models?: readonly string[];
   maxOutputTokens?: number;
   attemptTimeoutMs?: number;
   overallTimeoutMs?: number;
@@ -100,20 +101,21 @@ export async function routeModel(input: {
   const attemptTimeoutMs = input.attemptTimeoutMs ?? 5_000;
   const overallTimeoutMs = input.overallTimeoutMs ?? 14_000;
   const maxOutputTokens = input.maxOutputTokens ?? 800;
+  const models = input.models?.length ? input.models : MODEL_CHAIN;
   const overall = deadlineSignal(overallTimeoutMs);
   const attempts: { model: string; status: number | string; latencyMs: number; ok: boolean }[] = [];
   const startedAt = Date.now();
 
   try {
-    for (let index = 0; index < MODEL_CHAIN.length; index += 1) {
-      const model = MODEL_CHAIN[index];
+    for (let index = 0; index < models.length; index += 1) {
+      const model = models[index];
       if (overall.signal.aborted) break;
 
       const timeoutMs = computeAttemptTimeout({
         attemptTimeoutMs,
         overallTimeoutMs,
         elapsedMs: Date.now() - startedAt,
-        remainingModels: MODEL_CHAIN.length - index
+        remainingModels: models.length - index
       });
       if (timeoutMs <= 0) break;
 
