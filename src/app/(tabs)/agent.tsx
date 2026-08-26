@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import type { AgentHistoryMessage } from '@/agent/agent-dose-action-schema';
 import { executeDoseAgentTool } from '@/agent/execute-dose-tool';
 import { getAgentRelevantPendingDoses } from '@/domain/dose-queries';
+import { usePushToTalk } from '@/hooks/use-push-to-talk';
 import { runDoseAgent } from '@/services/ai-gateway';
 
 type ChatMessage = AgentHistoryMessage;
@@ -15,6 +16,7 @@ const quickActions = [
 ] as const;
 
 export default function AgentScreen() {
+  const voice = usePushToTalk();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -77,6 +79,27 @@ export default function AgentScreen() {
     }
   }
 
+  async function toggleVoice() {
+    setError(null);
+    const result = await voice.toggle();
+
+    if (result.type === 'permission-denied') {
+      Alert.alert('Microphone permission needed', 'You can still control your medication reminders by typing or using Today.');
+      return;
+    }
+
+    if (result.type === 'error') {
+      setError(`I couldn't use that recording (${result.message}). You can try again or type instead.`);
+      return;
+    }
+
+    if (result.type === 'transcript') {
+      await sendMessage(result.transcript);
+    }
+  }
+
+  const isBusy = isSending || voice.isTranscribing;
+
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -86,7 +109,7 @@ export default function AgentScreen() {
     >
       <View className="gap-2">
         <Text className="text-3xl font-bold text-ink">Agent</Text>
-        <Text className="leading-6 text-muted">Natural language controls the same local dose state as the deterministic buttons. The model never writes to the database directly.</Text>
+        <Text className="leading-6 text-muted">Say or type what happened. The agent can operate your local dose state, while the model never writes to the database directly.</Text>
       </View>
 
       <View className="gap-3">
@@ -117,7 +140,7 @@ export default function AgentScreen() {
         {quickActions.map((action) => (
           <Pressable
             key={action}
-            disabled={isSending}
+            disabled={isBusy || voice.isRecording}
             onPress={() => void sendMessage(action)}
             className="rounded-full bg-white px-4 py-2 disabled:opacity-40"
           >
@@ -130,19 +153,36 @@ export default function AgentScreen() {
         <TextInput
           value={input}
           onChangeText={setInput}
-          editable={!isSending}
+          editable={!isBusy && !voice.isRecording}
           placeholder="Tell me: I took it, remind me in 30 minutes…"
           multiline
           className="min-h-24 rounded-2xl bg-canvas px-4 py-3 text-base text-ink"
           textAlignVertical="top"
         />
-        <Pressable
-          disabled={!input.trim() || isSending}
-          onPress={() => void sendMessage(input)}
-          className="items-center rounded-2xl bg-brand px-4 py-3 disabled:opacity-40"
-        >
-          <Text className="font-semibold text-white">{isSending ? 'Working…' : 'Send'}</Text>
-        </Pressable>
+
+        <View className="flex-row gap-3">
+          <Pressable
+            disabled={isSending || voice.isTranscribing}
+            onPress={() => void toggleVoice()}
+            className={`flex-1 items-center rounded-2xl px-4 py-3 disabled:opacity-40 ${voice.isRecording ? 'bg-red-50' : 'bg-canvas'}`}
+          >
+            <Text className="font-semibold text-ink">
+              {voice.isRecording
+                ? `Stop · ${voice.recordingSeconds}s`
+                : voice.isTranscribing
+                  ? 'Transcribing…'
+                  : '🎙️ Speak'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            disabled={!input.trim() || isBusy || voice.isRecording}
+            onPress={() => void sendMessage(input)}
+            className="flex-1 items-center rounded-2xl bg-brand px-4 py-3 disabled:opacity-40"
+          >
+            <Text className="font-semibold text-white">{isSending ? 'Working…' : 'Send'}</Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );
