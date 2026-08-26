@@ -71,7 +71,9 @@ export default function AgentScreen() {
       setMessages((current) => [...current, { role: 'assistant', text: assistantText }]);
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : 'unknown-error';
-      setError(`The agent is unavailable right now (${detail}). You can still use Taken, Snooze, and Skip from Today.`);
+      const fallbackText = 'I could not reach the agent right now. Your medication data was not changed. You can still use Taken, Snooze, and Skip from Today.';
+      setMessages((current) => [...current, { role: 'assistant', text: fallbackText }]);
+      setError(`Agent unavailable (${detail}).`);
     } finally {
       setIsSending(false);
     }
