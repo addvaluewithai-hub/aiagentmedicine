@@ -35,7 +35,9 @@ async function handleMedicationNotificationResponse(response: Notifications.Noti
     }
 
     const until = new Date(Date.now() + 15 * 60_000);
-    snoozeDose(parsed.doseId, until, 'button');
+    const changed = snoozeDose(parsed.doseId, until, 'button');
+    if (!changed) return;
+
     await scheduleDoseReminder({
       doseId: parsed.doseId,
       title: 'Medication reminder',
