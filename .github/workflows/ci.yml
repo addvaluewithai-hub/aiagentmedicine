@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat/foundation-bootstrap]
+    branches: [main]
   pull_request:
 
 jobs:

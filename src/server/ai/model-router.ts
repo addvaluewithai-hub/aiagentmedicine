@@ -101,7 +101,7 @@ export async function routeModel(input: {
   const overallTimeoutMs = input.overallTimeoutMs ?? 14_000;
   const maxOutputTokens = input.maxOutputTokens ?? 800;
   const overall = deadlineSignal(overallTimeoutMs);
-  const attempts: Array<{ model: string; status: number | string; latencyMs: number; ok: boolean }> = [];
+  const attempts: { model: string; status: number | string; latencyMs: number; ok: boolean }[] = [];
   const startedAt = Date.now();
 
   try {
