@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export type DoseStatus = 'pending' | 'taken' | 'skipped' | 'missed';
 
@@ -52,7 +52,10 @@ export const doseOccurrences = sqliteTable('dose_occurrences', {
   resolutionSource: text('resolution_source'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull()
-}, (table) => [index('dose_due_status_idx').on(table.dueAt, table.status)]);
+}, (table) => [
+  index('dose_due_status_idx').on(table.dueAt, table.status),
+  uniqueIndex('dose_plan_due_unique_idx').on(table.medicationPlanId, table.dueAt)
+]);
 
 export const reminderAttempts = sqliteTable('reminder_attempts', {
   id: text('id').primaryKey(),
@@ -62,7 +65,8 @@ export const reminderAttempts = sqliteTable('reminder_attempts', {
   sentAt: integer('sent_at'),
   message: text('message').notNull(),
   deliveryStatus: text('delivery_status').$type<'scheduled' | 'sent' | 'failed' | 'cancelled'>().notNull().default('scheduled'),
-  interaction: text('interaction')
+  interaction: text('interaction'),
+  notificationIdentifier: text('notification_identifier')
 }, (table) => [index('reminder_dose_idx').on(table.doseOccurrenceId)]);
 
 export const auditEvents = sqliteTable('audit_events', {
