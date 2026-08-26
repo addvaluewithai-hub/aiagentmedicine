@@ -11,14 +11,21 @@ import {
 } from '@/db/schema';
 import { createLocalId } from '@/lib/id';
 
-function nextLocalOccurrence(localTime: string, from = new Date()) {
+function nextLocalOccurrence(localTime: string, scheduleDays: string[] | null, from = new Date()) {
   const [hour, minute] = localTime.split(':').map(Number);
-  const candidate = new Date(from);
-  candidate.setHours(hour, minute, 0, 0);
-  if (candidate.getTime() <= from.getTime()) {
-    candidate.setDate(candidate.getDate() + 1);
+  const weekdayCodes = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const candidate = new Date(from);
+    candidate.setDate(candidate.getDate() + offset);
+    candidate.setHours(hour, minute, 0, 0);
+
+    if (candidate.getTime() <= from.getTime()) continue;
+    if (scheduleDays && !scheduleDays.includes(weekdayCodes[candidate.getDay()])) continue;
+    return candidate;
   }
-  return candidate;
+
+  throw new Error('next-dose-could-not-be-generated');
 }
 
 export type CommittedDose = {
@@ -81,11 +88,12 @@ export function commitMedicationDraft(input: MedicationDraft) {
           medicationPlanId: planId,
           localTime,
           timezone,
+          daysOfWeekJson: item.scheduleDays === null ? null : JSON.stringify(item.scheduleDays),
           createdAt: now
         }).run();
 
         const doseId = createLocalId('dose');
-        const dueAt = nextLocalOccurrence(localTime).getTime();
+        const dueAt = nextLocalOccurrence(localTime, item.scheduleDays).getTime();
         doses.push({ doseId, medicationName: item.name, dueAt });
         tx.insert(doseOccurrences).values({
           id: doseId,
