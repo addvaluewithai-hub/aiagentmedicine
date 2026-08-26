@@ -64,12 +64,18 @@ export async function scheduleTrackedDoseReminder(input: {
 
 export async function cancelDoseNotifications(doseId: string) {
   initializeDatabase();
-  const requests = await Notifications.getAllScheduledNotificationsAsync();
-  const matching = requests.filter((request) => request.content.data?.doseId === doseId);
+  const [scheduled, presented] = await Promise.all([
+    Notifications.getAllScheduledNotificationsAsync(),
+    Notifications.getPresentedNotificationsAsync()
+  ]);
 
-  await Promise.allSettled(
-    matching.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier))
-  );
+  const scheduledMatches = scheduled.filter((request) => request.content.data?.doseId === doseId);
+  const presentedMatches = presented.filter((notification) => notification.request.content.data?.doseId === doseId);
+
+  await Promise.allSettled([
+    ...scheduledMatches.map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)),
+    ...presentedMatches.map((notification) => Notifications.dismissNotificationAsync(notification.request.identifier))
+  ]);
 
   db.update(reminderAttempts)
     .set({ deliveryStatus: 'cancelled' })
