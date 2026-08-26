@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const ReminderTimesSchema = z.array(z.string().trim().min(1).max(20)).max(16);
+const ScheduleDaysSchema = z.array(z.string().trim().min(1).max(20)).max(7).nullable();
 
 export const AgentDoseContextSchema = z.object({
   doseId: z.string().min(1).max(160),
@@ -16,7 +17,8 @@ export const AgentMedicationPlanContextSchema = z.object({
   medicationName: z.string().trim().min(1).max(240),
   strength: z.string().trim().max(240).nullable(),
   status: z.enum(['active', 'paused', 'ended']),
-  reminderTimes: ReminderTimesSchema
+  reminderTimes: ReminderTimesSchema,
+  scheduleDays: ScheduleDaysSchema
 });
 
 export const AgentHistoryMessageSchema = z.object({
@@ -73,7 +75,8 @@ const PendingPlanDetailsSchema = {
   planId: z.string().min(1).max(160),
   medicationName: z.string().trim().min(1).max(240),
   strength: z.string().trim().max(240).nullable().default(null),
-  reminderTimes: ReminderTimesSchema.default([])
+  reminderTimes: ReminderTimesSchema.default([]),
+  scheduleDays: ScheduleDaysSchema.default(null)
 };
 
 export const AgentPendingConfirmationSchema = z.discriminatedUnion('name', [
