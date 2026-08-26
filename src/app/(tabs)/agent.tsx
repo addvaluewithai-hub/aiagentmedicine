@@ -28,8 +28,14 @@ function planConfirmationLabel(pending: AgentPendingConfirmation) {
 }
 
 function planConfirmationDetails(pending: AgentPendingConfirmation) {
+  const scheduleDays = pending.scheduleDays === null
+    ? 'Every day'
+    : pending.scheduleDays.length
+      ? pending.scheduleDays.join(', ')
+      : 'Schedule days unavailable';
   const details = [
     pending.strength,
+    `Days: ${scheduleDays}`,
     pending.reminderTimes.length
       ? `Reminders: ${pending.reminderTimes.join(', ')}`
       : 'No reminder times saved'
@@ -68,7 +74,8 @@ export default function AgentScreen() {
       medicationName: plan.medicationName,
       strength: plan.strength,
       status: plan.status,
-      reminderTimes: plan.reminderTimes
+      reminderTimes: plan.reminderTimes,
+      scheduleDays: plan.scheduleDays
     }));
 
     setMessages((current) => [...current, { role: 'user', text }]);
