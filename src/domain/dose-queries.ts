@@ -34,6 +34,11 @@ function baseDoseQuery() {
     .leftJoin(medicationInstructions, eq(medicationPlans.instructionId, medicationInstructions.id));
 }
 
+export function getDoseById(doseId: string): DoseRow | null {
+  initializeDatabase();
+  return baseDoseQuery().where(eq(doseOccurrences.id, doseId)).get() ?? null;
+}
+
 export function getUpcomingPendingDoses(limit = 50): DoseRow[] {
   initializeDatabase();
   return baseDoseQuery()

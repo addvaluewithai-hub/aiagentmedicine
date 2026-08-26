@@ -66,6 +66,7 @@ export function initializeDatabase() {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS dose_due_status_idx ON dose_occurrences(due_at, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS dose_plan_due_unique_idx ON dose_occurrences(medication_plan_id, due_at);
 
     CREATE TABLE IF NOT EXISTS reminder_attempts (
       id TEXT PRIMARY KEY NOT NULL,
@@ -75,7 +76,8 @@ export function initializeDatabase() {
       sent_at INTEGER,
       message TEXT NOT NULL,
       delivery_status TEXT NOT NULL DEFAULT 'scheduled',
-      interaction TEXT
+      interaction TEXT,
+      notification_identifier TEXT
     );
     CREATE INDEX IF NOT EXISTS reminder_dose_idx ON reminder_attempts(dose_occurrence_id);
 
@@ -88,6 +90,11 @@ export function initializeDatabase() {
       created_at INTEGER NOT NULL
     );
   `);
+
+  const reminderAttemptColumns = sqlite.getAllSync<{ name: string }>('PRAGMA table_info(reminder_attempts)');
+  if (!reminderAttemptColumns.some((column) => column.name === 'notification_identifier')) {
+    sqlite.execSync('ALTER TABLE reminder_attempts ADD COLUMN notification_identifier TEXT;');
+  }
 
   initialized = true;
 }

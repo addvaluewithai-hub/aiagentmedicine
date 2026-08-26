@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const nullableShortText = z.string().trim().max(240).nullable();
 const reminderTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+export const MedicationWeekdaySchema = z.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']);
 
 export const MedicationItemDraftSchema = z.object({
   name: nullableShortText,
@@ -13,6 +14,7 @@ export const MedicationItemDraftSchema = z.object({
   mealRelation: nullableShortText,
   timingText: nullableShortText,
   reminderTimes: z.array(reminderTime).max(12).default([]),
+  scheduleDays: z.array(MedicationWeekdaySchema).max(7).nullable(),
   uncertainFields: z.array(z.enum([
     'name',
     'strength',
@@ -22,8 +24,9 @@ export const MedicationItemDraftSchema = z.object({
     'frequency',
     'mealRelation',
     'timingText',
-    'reminderTimes'
-  ])).max(9),
+    'reminderTimes',
+    'scheduleDays'
+  ])).max(10),
   notes: nullableShortText
 });
 
@@ -37,15 +40,22 @@ export const MedicationExtractionResultSchema = MedicationDraftSchema.extend({
 
 export type MedicationItemDraft = z.infer<typeof MedicationItemDraftSchema>;
 export type MedicationDraft = z.infer<typeof MedicationDraftSchema>;
+export type MedicationWeekday = z.infer<typeof MedicationWeekdaySchema>;
 
 const CRITICAL_FIELDS = ['name', 'strength', 'doseAmount', 'frequency'] as const;
 
 export function getMedicationBlockingFields(item: MedicationItemDraft) {
   const blocking = CRITICAL_FIELDS.filter((field) => !item[field] || item.uncertainFields.includes(field));
+  const scheduleBlocking: ('reminderTimes' | 'scheduleDays')[] = [];
+
   if (item.reminderTimes.length === 0 || item.uncertainFields.includes('reminderTimes')) {
-    return [...blocking, 'reminderTimes'] as const;
+    scheduleBlocking.push('reminderTimes');
   }
-  return blocking;
+  if (item.scheduleDays?.length === 0 || item.uncertainFields.includes('scheduleDays')) {
+    scheduleBlocking.push('scheduleDays');
+  }
+
+  return [...blocking, ...scheduleBlocking];
 }
 
 export function isMedicationDraftReady(draft: MedicationDraft) {

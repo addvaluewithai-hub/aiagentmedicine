@@ -4,7 +4,11 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { markDoseTaken, skipDose, snoozeDose } from '@/domain/dose-actions';
 import { getTodayDoses, getUpcomingPendingDoses, type DoseRow } from '@/domain/dose-queries';
-import { scheduleDoseReminder } from '@/services/notifications';
+import {
+  cancelDoseNotifications,
+  replenishLocalReminderWindow,
+  snoozeDoseNotification
+} from '@/services/local-reminder-window';
 
 function formatDoseTime(timestamp: number) {
   return new Intl.DateTimeFormat(undefined, {
@@ -35,7 +39,7 @@ export default function TodayScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => {
-    refresh();
+    void replenishLocalReminderWindow().finally(refresh);
   }, [refresh]));
 
   const nextDose = upcoming[0] ?? today.find((dose) => dose.status === 'pending') ?? null;
@@ -43,13 +47,15 @@ export default function TodayScreen() {
     ? nextDose.snoozedUntil
     : nextDose?.dueAt;
 
-  function take(doseId: string) {
-    markDoseTaken(doseId, 'button');
+  async function take(doseId: string) {
+    const changed = markDoseTaken(doseId, 'button');
+    if (changed) await cancelDoseNotifications(doseId);
     refresh();
   }
 
-  function skip(doseId: string) {
-    skipDose(doseId, 'button');
+  async function skip(doseId: string) {
+    const changed = skipDose(doseId, 'button');
+    if (changed) await cancelDoseNotifications(doseId);
     refresh();
   }
 
@@ -61,12 +67,7 @@ export default function TodayScreen() {
       return;
     }
 
-    await scheduleDoseReminder({
-      doseId: dose.doseId,
-      title: `Time for ${dose.medicationName}`,
-      body: 'You snoozed this dose for 15 minutes. Did you take it?',
-      dueAt: until
-    });
+    await snoozeDoseNotification(dose, until).catch(() => undefined);
     refresh();
   }
 
@@ -99,13 +100,13 @@ export default function TodayScreen() {
             {nextDoseTime ? <Text className="text-lg font-semibold text-brand">{formatDoseTime(nextDoseTime)}</Text> : null}
             {nextDose.status === 'pending' ? (
               <View className="mt-2 flex-row gap-2">
-                <Pressable onPress={() => take(nextDose.doseId)} className="flex-1 items-center rounded-2xl bg-brand px-3 py-3">
+                <Pressable onPress={() => void take(nextDose.doseId)} className="flex-1 items-center rounded-2xl bg-brand px-3 py-3">
                   <Text className="font-semibold text-white">Taken</Text>
                 </Pressable>
                 <Pressable onPress={() => void snooze(nextDose)} className="flex-1 items-center rounded-2xl bg-canvas px-3 py-3">
                   <Text className="font-semibold text-ink">Snooze 15m</Text>
                 </Pressable>
-                <Pressable onPress={() => skip(nextDose.doseId)} className="items-center rounded-2xl bg-canvas px-3 py-3">
+                <Pressable onPress={() => void skip(nextDose.doseId)} className="items-center rounded-2xl bg-canvas px-3 py-3">
                   <Text className="font-semibold text-ink">Skip</Text>
                 </Pressable>
               </View>
@@ -133,7 +134,7 @@ export default function TodayScreen() {
               <Text className="mt-1 text-sm text-muted">{formatDoseTime(dose.dueAt)} · {statusLabel(dose, now)}</Text>
             </View>
             {dose.status === 'pending' ? (
-              <Pressable onPress={() => take(dose.doseId)} className="rounded-xl bg-brand/10 px-3 py-2">
+              <Pressable onPress={() => void take(dose.doseId)} className="rounded-xl bg-brand/10 px-3 py-2">
                 <Text className="font-semibold text-brand">Taken</Text>
               </Pressable>
             ) : null}
