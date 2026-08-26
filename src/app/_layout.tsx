@@ -7,11 +7,13 @@ import { useEffect } from 'react';
 
 import { initializeDatabase } from '@/db/client';
 import { markDoseTaken, skipDose, snoozeDose } from '@/domain/dose-actions';
+import { getDoseById } from '@/domain/dose-queries';
 import {
-  configureMedicationNotifications,
-  getDoseNotificationAction,
-  scheduleDoseReminder
-} from '@/services/notifications';
+  cancelDoseNotifications,
+  replenishLocalReminderWindow,
+  snoozeDoseNotification
+} from '@/services/local-reminder-window';
+import { configureMedicationNotifications, getDoseNotificationAction } from '@/services/notifications';
 
 const handledNotificationResponses = new Set<string>();
 
@@ -25,27 +27,28 @@ async function handleMedicationNotificationResponse(response: Notifications.Noti
 
   try {
     if (parsed.action === 'TAKEN') {
-      markDoseTaken(parsed.doseId, 'button');
+      const changed = markDoseTaken(parsed.doseId, 'button');
+      if (changed) await cancelDoseNotifications(parsed.doseId);
       return;
     }
 
     if (parsed.action === 'SKIP') {
-      skipDose(parsed.doseId, 'button');
+      const changed = skipDose(parsed.doseId, 'button');
+      if (changed) await cancelDoseNotifications(parsed.doseId);
       return;
     }
+
+    const dose = getDoseById(parsed.doseId);
+    if (!dose) return;
 
     const until = new Date(Date.now() + 15 * 60_000);
     const changed = snoozeDose(parsed.doseId, until, 'button');
     if (!changed) return;
 
-    await scheduleDoseReminder({
-      doseId: parsed.doseId,
-      title: 'Medication reminder',
-      body: 'You snoozed this dose for 15 minutes. Taken, snooze, or skip?',
-      dueAt: until
-    });
+    await snoozeDoseNotification(dose, until);
   } finally {
     await Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+    void replenishLocalReminderWindow();
   }
 }
 
@@ -53,6 +56,7 @@ export default function RootLayout() {
   useEffect(() => {
     initializeDatabase();
     void configureMedicationNotifications();
+    void replenishLocalReminderWindow();
 
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       void handleMedicationNotificationResponse(response);
