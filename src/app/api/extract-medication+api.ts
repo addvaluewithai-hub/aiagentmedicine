@@ -65,13 +65,14 @@ Rules:
 - Never guess unreadable or missing medication instructions. Use null for unknown scalar values.
 - Preserve medication names, strengths, units, and source wording when possible.
 - reminderTimes must contain only explicit clock times supplied by the user or clearly written in the source, normalized to 24-hour HH:MM. Never invent clock times from phrases such as morning, after breakfast, or twice daily.
+- scheduleDays describes recurrence: use null only when the source clearly means every day/daily; otherwise use explicit weekday codes sun, mon, tue, wed, thu, fri, sat. If recurrence is unclear or cannot be represented as daily or explicit weekdays (for example every other day), use [] and include scheduleDays in uncertainFields.
 - If a critical value is missing, contradictory, or materially uncertain, include its field name in uncertainFields.
-- Critical setup fields are name, strength, doseAmount, frequency, and reminderTimes.
+- Critical setup fields are name, strength, doseAmount, frequency, reminderTimes, and scheduleDays.
 - When CURRENT_VALIDATED_DRAFT_DATA is supplied, preserve existing values unless the user's clarification changes or corrects them.
 - assistantMessage must be concise, natural, and in the user's current language. If information is missing or uncertain, ask only the smallest useful clarification question. If the draft is ready for review, say so without giving medical advice.
 
 Return JSON only with exactly this shape:
-{"medications":[{"name":string|null,"strength":string|null,"form":string|null,"route":string|null,"doseAmount":string|null,"frequency":string|null,"mealRelation":string|null,"timingText":string|null,"reminderTimes":["HH:MM"],"uncertainFields":["name"|"strength"|"form"|"route"|"doseAmount"|"frequency"|"mealRelation"|"timingText"|"reminderTimes"],"notes":string|null}],"assistantMessage":"string"}`;
+{"medications":[{"name":string|null,"strength":string|null,"form":string|null,"route":string|null,"doseAmount":string|null,"frequency":string|null,"mealRelation":string|null,"timingText":string|null,"reminderTimes":["HH:MM"],"scheduleDays":null|["sun"|"mon"|"tue"|"wed"|"thu"|"fri"|"sat"],"uncertainFields":["name"|"strength"|"form"|"route"|"doseAmount"|"frequency"|"mealRelation"|"timingText"|"reminderTimes"|"scheduleDays"],"notes":string|null}],"assistantMessage":"string"}`;
 
   const routed = await routeModel({
     apiKey: process.env.AI_API,
