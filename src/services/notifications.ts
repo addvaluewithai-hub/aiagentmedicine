@@ -5,6 +5,7 @@ export const MEDICATION_CATEGORY = 'medication-dose';
 export const MEDICATION_CHANNEL = 'medication-reminders';
 
 export type DoseNotificationAction = 'TAKEN' | 'SNOOZE' | 'SKIP';
+export type MedicationReminderKind = 'primary' | 'followup' | 'snooze';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -43,14 +44,20 @@ export async function scheduleDoseReminder(input: {
   title: string;
   body: string;
   dueAt: Date;
+  reminderKind?: MedicationReminderKind;
 }) {
+  const reminderAt = input.dueAt.getTime();
   return Notifications.scheduleNotificationAsync({
     content: {
       title: input.title,
       body: input.body,
       categoryIdentifier: MEDICATION_CATEGORY,
       sound: 'default',
-      data: { doseId: input.doseId }
+      data: {
+        doseId: input.doseId,
+        reminderAt,
+        reminderKind: input.reminderKind ?? 'primary'
+      }
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
