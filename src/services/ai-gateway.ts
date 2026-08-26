@@ -1,6 +1,3 @@
-import Constants from 'expo-constants';
-import { Platform } from 'react-native';
-
 import type { MedicationDraft } from '@/ai/medication-draft-schema';
 
 type ExtractMedicationInput = {
@@ -16,19 +13,8 @@ type ExtractMedicationResponse = {
   assistantMessage: string;
 };
 
-function getApiBaseUrl() {
-  const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, '');
-  if (configured) return configured;
-  if (Platform.OS === 'web') return '';
-
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) return `http://${hostUri}`;
-
-  throw new Error('missing-api-base-url');
-}
-
 export async function extractMedication(input: ExtractMedicationInput): Promise<ExtractMedicationResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/api/extract-medication`, {
+  const response = await fetch('/api/extract-medication', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input)
