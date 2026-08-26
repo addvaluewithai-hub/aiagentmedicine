@@ -11,6 +11,8 @@ import {
 } from '@/db/schema';
 import { createLocalId } from '@/lib/id';
 
+export type MedicationPlanMutationSource = 'button' | 'agent';
+
 export type MedicationPlanSummary = {
   planId: string;
   medicationId: string;
@@ -73,7 +75,7 @@ export function getMedicationPlanSummaries(): MedicationPlanSummary[] {
   });
 }
 
-export function pauseMedicationPlan(planId: string) {
+export function pauseMedicationPlan(planId: string, source: MedicationPlanMutationSource = 'button') {
   initializeDatabase();
   const plan = db.select({ status: medicationPlans.status })
     .from(medicationPlans)
@@ -119,7 +121,7 @@ export function pauseMedicationPlan(planId: string) {
       eventType: 'medication_plan.paused',
       entityType: 'medication_plan',
       entityId: planId,
-      payloadJson: JSON.stringify({ removedProjectedDoseCount: projected.length }),
+      payloadJson: JSON.stringify({ source, removedProjectedDoseCount: projected.length }),
       createdAt: now
     }).run();
   });
@@ -127,7 +129,7 @@ export function pauseMedicationPlan(planId: string) {
   return { changed: true, removedDoseIds: projected.map((dose) => dose.id) };
 }
 
-export function resumeMedicationPlan(planId: string) {
+export function resumeMedicationPlan(planId: string, source: MedicationPlanMutationSource = 'button') {
   initializeDatabase();
   const plan = db.select({ status: medicationPlans.status })
     .from(medicationPlans)
@@ -148,6 +150,7 @@ export function resumeMedicationPlan(planId: string) {
       eventType: 'medication_plan.resumed',
       entityType: 'medication_plan',
       entityId: planId,
+      payloadJson: JSON.stringify({ source }),
       createdAt: now
     }).run();
   });
