@@ -1,11 +1,3 @@
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState
-} from 'expo-audio';
-import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -17,7 +9,8 @@ import {
   type MedicationDraft
 } from '@/ai/medication-draft-schema';
 import { setOnboardingDraft } from '@/features/onboarding/draft-store';
-import { extractMedication, transcribeAudio } from '@/services/ai-gateway';
+import { usePushToTalk } from '@/hooks/use-push-to-talk';
+import { extractMedication } from '@/services/ai-gateway';
 
 const entryActions = [
   { id: 'camera', label: 'Take photo', icon: '📷' },
@@ -26,7 +19,6 @@ const entryActions = [
 ] as const;
 
 type SupportedImageMime = 'image/jpeg' | 'image/png' | 'image/webp';
-type SupportedAudioMime = 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audio/webm' | 'audio/mpeg' | 'audio/mp3';
 
 function normalizeImageMime(mimeType: string | undefined, uri: string): SupportedImageMime {
   if (mimeType === 'image/png' || mimeType === 'image/webp' || mimeType === 'image/jpeg') {
@@ -37,33 +29,14 @@ function normalizeImageMime(mimeType: string | undefined, uri: string): Supporte
   return 'image/jpeg';
 }
 
-function normalizeAudioMime(mimeType: string | undefined, uri: string): SupportedAudioMime {
-  if (
-    mimeType === 'audio/m4a' ||
-    mimeType === 'audio/mp4' ||
-    mimeType === 'audio/aac' ||
-    mimeType === 'audio/webm' ||
-    mimeType === 'audio/mpeg' ||
-    mimeType === 'audio/mp3'
-  ) {
-    return mimeType;
-  }
-  if (uri.toLowerCase().endsWith('.webm')) return 'audio/webm';
-  if (uri.toLowerCase().endsWith('.aac')) return 'audio/aac';
-  if (uri.toLowerCase().endsWith('.mp3')) return 'audio/mpeg';
-  return 'audio/mp4';
-}
-
 export default function MedicationSetupScreen() {
   const router = useRouter();
-  const audioRecorder = useAudioRecorder(RecordingPresets.LOW_QUALITY);
-  const recorderState = useAudioRecorderState(audioRecorder, 250);
+  const voice = usePushToTalk();
   const [message, setMessage] = useState('');
   const [sourceUri, setSourceUri] = useState<string | null>(null);
   const [draft, setDraft] = useState<MedicationDraft | null>(null);
   const [assistantMessage, setAssistantMessage] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function analyze(input: {
@@ -91,50 +64,22 @@ export default function MedicationSetupScreen() {
   }
 
   async function toggleVoice() {
-    if (recorderState.isRecording) {
-      setIsTranscribing(true);
-      setError(null);
-      try {
-        await audioRecorder.stop();
-        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+    setError(null);
+    const result = await voice.toggle();
 
-        const uri = audioRecorder.uri;
-        if (!uri) throw new Error('recording-file-missing');
-
-        const file = new File(uri);
-        if (!file.size) throw new Error('recording-file-empty');
-        if (file.size > 8_000_000) throw new Error('recording-too-large');
-
-        const transcriptResult = await transcribeAudio({
-          audioBase64: await file.base64(),
-          mimeType: normalizeAudioMime(file.type, uri)
-        });
-
-        setMessage(transcriptResult.transcript);
-        await analyze({ text: transcriptResult.transcript });
-      } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : 'unknown-error';
-        setError(`I couldn't transcribe that recording (${detail}). You can try again or type it instead.`);
-      } finally {
-        setIsTranscribing(false);
-      }
-      return;
-    }
-
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
+    if (result.type === 'permission-denied') {
       Alert.alert('Microphone permission needed', 'You can still add or clarify medications with a photo or text.');
       return;
     }
 
-    try {
-      setError(null);
-      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-    } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : 'unknown-error';
-      setError(`I couldn't start recording (${detail}).`);
+    if (result.type === 'error') {
+      setError(`I couldn't use that recording (${result.message}). You can try again or type it instead.`);
+      return;
+    }
+
+    if (result.type === 'transcript') {
+      setMessage(result.transcript);
+      await analyze({ text: result.transcript });
     }
   }
 
@@ -174,7 +119,7 @@ export default function MedicationSetupScreen() {
 
   async function sendText() {
     const text = message.trim();
-    if (!text || isSending || isTranscribing) return;
+    if (!text || isSending || voice.isTranscribing) return;
     await analyze({ text });
   }
 
@@ -185,8 +130,7 @@ export default function MedicationSetupScreen() {
   }
 
   const ready = draft ? isMedicationDraftReady(draft) : false;
-  const isBusy = isSending || isTranscribing;
-  const recordingSeconds = Math.max(0, Math.ceil(recorderState.durationMillis / 1000));
+  const isBusy = isSending || voice.isTranscribing;
 
   return (
     <ScrollView
@@ -203,17 +147,17 @@ export default function MedicationSetupScreen() {
       <View className="flex-row gap-3">
         {entryActions.map((action) => {
           const isVoice = action.id === 'voice';
-          const recording = isVoice && recorderState.isRecording;
+          const recording = isVoice && voice.isRecording;
           return (
             <Pressable
               key={action.id}
-              disabled={isBusy && !recording}
+              disabled={(isBusy || voice.isRecording) && !recording}
               onPress={() => chooseSource(action.id)}
               className={`flex-1 items-center gap-2 rounded-card px-2 py-5 active:opacity-70 disabled:opacity-40 ${recording ? 'bg-red-50' : 'bg-white'}`}
             >
               <Text className="text-2xl">{recording ? '⏹️' : action.icon}</Text>
               <Text className="text-center text-sm font-semibold text-ink">
-                {recording ? `Stop · ${recordingSeconds}s` : isVoice && isTranscribing ? 'Transcribing…' : action.label}
+                {recording ? `Stop · ${voice.recordingSeconds}s` : isVoice && voice.isTranscribing ? 'Transcribing…' : action.label}
               </Text>
             </Pressable>
           );
@@ -278,12 +222,12 @@ export default function MedicationSetupScreen() {
           onChangeText={setMessage}
           placeholder={draft ? 'Example: I take it at 8 AM and 8 PM' : 'Example: I take metformin 500 mg, one tablet twice a day at 8 AM and 8 PM'}
           multiline
-          editable={!isBusy && !recorderState.isRecording}
+          editable={!isBusy && !voice.isRecording}
           className="min-h-28 rounded-2xl bg-canvas px-4 py-3 text-base text-ink"
           textAlignVertical="top"
         />
         <Pressable
-          disabled={!message.trim() || isBusy || recorderState.isRecording}
+          disabled={!message.trim() || isBusy || voice.isRecording}
           onPress={sendText}
           className="items-center rounded-2xl bg-brand px-4 py-3 disabled:opacity-40"
         >
@@ -293,7 +237,7 @@ export default function MedicationSetupScreen() {
 
       {draft ? (
         <Pressable
-          disabled={!ready || isBusy || recorderState.isRecording}
+          disabled={!ready || isBusy || voice.isRecording}
           onPress={reviewDraft}
           className="items-center rounded-2xl bg-ink px-4 py-4 disabled:opacity-30"
         >
