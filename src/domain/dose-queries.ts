@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, lte, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, lte, ne, or } from 'drizzle-orm';
 
 import { db, initializeDatabase } from '@/db/client';
 import {
@@ -22,6 +22,7 @@ export type DoseHistoryRow = DoseRow & {
   takenAt: number | null;
   skippedAt: number | null;
   resolutionSource: string | null;
+  updatedAt: number;
 };
 
 function baseDoseQuery() {
@@ -49,6 +50,7 @@ function historyDoseQuery() {
     takenAt: doseOccurrences.takenAt,
     skippedAt: doseOccurrences.skippedAt,
     resolutionSource: doseOccurrences.resolutionSource,
+    updatedAt: doseOccurrences.updatedAt,
     medicationName: medications.displayName,
     strength: medications.strengthText,
     doseAmount: medicationInstructions.doseAmountText
@@ -94,6 +96,25 @@ export function getAgentRelevantPendingDoses(input?: {
       lt(doseOccurrences.dueAt, to)
     ))
     .orderBy(doseOccurrences.dueAt)
+    .limit(limit)
+    .all();
+}
+
+export function getAgentCorrectableDoses(input?: {
+  lookbackHours?: number;
+  limit?: number;
+}): DoseHistoryRow[] {
+  initializeDatabase();
+  const lookbackHours = Math.min(Math.max(input?.lookbackHours ?? 48, 1), 168);
+  const limit = Math.min(Math.max(input?.limit ?? 10, 1), 20);
+  const since = Date.now() - lookbackHours * 60 * 60_000;
+
+  return historyDoseQuery()
+    .where(and(
+      inArray(doseOccurrences.status, ['taken', 'skipped']),
+      gte(doseOccurrences.updatedAt, since)
+    ))
+    .orderBy(desc(doseOccurrences.updatedAt))
     .limit(limit)
     .all();
 }

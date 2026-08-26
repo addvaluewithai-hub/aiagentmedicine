@@ -12,6 +12,16 @@ export const AgentDoseContextSchema = z.object({
   doseAmount: z.string().trim().max(240).nullable()
 });
 
+export const AgentCorrectableDoseContextSchema = z.object({
+  doseId: z.string().min(1).max(160),
+  dueAt: z.number().int().positive(),
+  status: z.enum(['taken', 'skipped']),
+  resolvedAt: z.number().int().positive().nullable(),
+  medicationName: z.string().trim().min(1).max(240),
+  strength: z.string().trim().max(240).nullable(),
+  doseAmount: z.string().trim().max(240).nullable()
+});
+
 export const AgentMedicationPlanContextSchema = z.object({
   planId: z.string().min(1).max(160),
   medicationName: z.string().trim().min(1).max(240),
@@ -42,6 +52,11 @@ const SkipToolSchema = z.object({
   doseId: z.string().min(1).max(160)
 });
 
+const CorrectDoseToPendingToolSchema = z.object({
+  name: z.literal('correct_dose_to_pending'),
+  doseId: z.string().min(1).max(160)
+});
+
 const PauseMedicationPlanToolSchema = z.object({
   name: z.literal('pause_medication_plan'),
   planId: z.string().min(1).max(160)
@@ -55,7 +70,8 @@ const ResumeMedicationPlanToolSchema = z.object({
 export const AgentDoseToolCallSchema = z.discriminatedUnion('name', [
   MarkTakenToolSchema,
   SnoozeToolSchema,
-  SkipToolSchema
+  SkipToolSchema,
+  CorrectDoseToPendingToolSchema
 ]);
 
 export const AgentPlanToolCallSchema = z.discriminatedUnion('name', [
@@ -67,6 +83,7 @@ export const AgentToolCallSchema = z.discriminatedUnion('name', [
   MarkTakenToolSchema,
   SnoozeToolSchema,
   SkipToolSchema,
+  CorrectDoseToPendingToolSchema,
   PauseMedicationPlanToolSchema,
   ResumeMedicationPlanToolSchema
 ]);
@@ -97,6 +114,7 @@ export const AgentDoseResponseSchema = z.object({
 });
 
 export type AgentDoseContext = z.infer<typeof AgentDoseContextSchema>;
+export type AgentCorrectableDoseContext = z.infer<typeof AgentCorrectableDoseContextSchema>;
 export type AgentMedicationPlanContext = z.infer<typeof AgentMedicationPlanContextSchema>;
 export type AgentHistoryMessage = z.infer<typeof AgentHistoryMessageSchema>;
 export type AgentDoseToolCall = z.infer<typeof AgentDoseToolCallSchema>;

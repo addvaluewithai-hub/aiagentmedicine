@@ -1,4 +1,5 @@
 import type {
+  AgentCorrectableDoseContext,
   AgentDoseContext,
   AgentDoseResponse,
   AgentHistoryMessage,
@@ -68,6 +69,7 @@ export async function transcribeAudio(input: {
 export async function runMedicationAgent(input: {
   text: string;
   doses: AgentDoseContext[];
+  correctableDoses: AgentCorrectableDoseContext[];
   plans: AgentMedicationPlanContext[];
   history: AgentHistoryMessage[];
   pendingConfirmation: AgentPendingConfirmation | null;
