@@ -75,6 +75,31 @@ export function getUpcomingPendingDoses(limit = 50): DoseRow[] {
     .all();
 }
 
+export function getPendingDosesForReminderWindow(input?: {
+  now?: number;
+  horizonDays?: number;
+  overdueMinutes?: number;
+  limit?: number;
+}): DoseRow[] {
+  initializeDatabase();
+  const now = input?.now ?? Date.now();
+  const horizonDays = Math.min(Math.max(input?.horizonDays ?? 7, 1), 14);
+  const overdueMinutes = Math.min(Math.max(input?.overdueMinutes ?? 90, 0), 24 * 60);
+  const limit = Math.min(Math.max(input?.limit ?? 100, 1), 200);
+  const from = now - overdueMinutes * 60_000;
+  const to = now + horizonDays * 24 * 60 * 60_000;
+
+  return baseDoseQuery()
+    .where(and(
+      eq(doseOccurrences.status, 'pending'),
+      gte(doseOccurrences.dueAt, from),
+      lt(doseOccurrences.dueAt, to)
+    ))
+    .orderBy(doseOccurrences.dueAt)
+    .limit(limit)
+    .all();
+}
+
 export function getAgentRelevantPendingDoses(input?: {
   now?: number;
   overdueHours?: number;
