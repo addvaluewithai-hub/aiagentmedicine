@@ -4,8 +4,17 @@ import { db, initializeDatabase } from '@/db/client';
 import { auditEvents, doseOccurrences } from '@/db/schema';
 import { createLocalId } from '@/lib/id';
 
+function isPendingDose(doseId: string) {
+  const row = db.select({ status: doseOccurrences.status })
+    .from(doseOccurrences)
+    .where(eq(doseOccurrences.id, doseId))
+    .get();
+  return row?.status === 'pending';
+}
+
 export function markDoseTaken(doseId: string, source: 'button' | 'agent' = 'button') {
   initializeDatabase();
+  if (!isPendingDose(doseId)) return false;
   const now = Date.now();
 
   db.transaction((tx) => {
@@ -27,10 +36,13 @@ export function markDoseTaken(doseId: string, source: 'button' | 'agent' = 'butt
       createdAt: now
     }).run();
   });
+
+  return true;
 }
 
 export function snoozeDose(doseId: string, until: Date, source: 'button' | 'agent' = 'button') {
   initializeDatabase();
+  if (!isPendingDose(doseId)) return false;
   const now = Date.now();
 
   db.transaction((tx) => {
@@ -49,10 +61,13 @@ export function snoozeDose(doseId: string, until: Date, source: 'button' | 'agen
       createdAt: now
     }).run();
   });
+
+  return true;
 }
 
 export function skipDose(doseId: string, source: 'button' | 'agent' = 'button') {
   initializeDatabase();
+  if (!isPendingDose(doseId)) return false;
   const now = Date.now();
 
   db.transaction((tx) => {
@@ -73,4 +88,6 @@ export function skipDose(doseId: string, source: 'button' | 'agent' = 'button') 
       createdAt: now
     }).run();
   });
+
+  return true;
 }
