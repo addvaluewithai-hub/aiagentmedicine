@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feat/foundation-bootstrap]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Expo doctor
+        run: npm run doctor
+
+      - name: Export web and API routes
+        run: npx expo export --platform web --no-ssg

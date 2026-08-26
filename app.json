@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Medicine Agent",
+    "slug": "aiagentmedicine",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "medicineagent",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.addvaluewithai.medicineagent"
+    },
+    "android": {
+      "package": "com.addvaluewithai.medicineagent",
+      "permissions": ["SCHEDULE_EXACT_ALARM"],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "server"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "medication-reminders"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose medication or prescription photos so the assistant can help set up your reminders.",
+          "cameraPermission": "Take medication or prescription photos so the assistant can help set up your reminders.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Record your medication instructions so the assistant can help set up your reminders."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
