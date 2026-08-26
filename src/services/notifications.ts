@@ -32,6 +32,9 @@ export async function scheduleDoseReminder(input: {
       categoryIdentifier: MEDICATION_CATEGORY,
       data: { doseId: input.doseId }
     },
-    trigger: input.dueAt
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: input.dueAt
+    }
   });
 }
