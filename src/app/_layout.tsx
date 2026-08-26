@@ -13,28 +13,38 @@ import {
   scheduleDoseReminder
 } from '@/services/notifications';
 
+const handledNotificationResponses = new Set<string>();
+
 async function handleMedicationNotificationResponse(response: Notifications.NotificationResponse) {
   const parsed = getDoseNotificationAction(response);
   if (!parsed) return;
 
-  if (parsed.action === 'TAKEN') {
-    markDoseTaken(parsed.doseId, 'button');
-    return;
-  }
+  const responseKey = `${response.notification.request.identifier}:${parsed.action}`;
+  if (handledNotificationResponses.has(responseKey)) return;
+  handledNotificationResponses.add(responseKey);
 
-  if (parsed.action === 'SKIP') {
-    skipDose(parsed.doseId, 'button');
-    return;
-  }
+  try {
+    if (parsed.action === 'TAKEN') {
+      markDoseTaken(parsed.doseId, 'button');
+      return;
+    }
 
-  const until = new Date(Date.now() + 15 * 60_000);
-  snoozeDose(parsed.doseId, until, 'button');
-  await scheduleDoseReminder({
-    doseId: parsed.doseId,
-    title: 'Medication reminder',
-    body: 'You snoozed this dose for 15 minutes. Taken, snooze, or skip?',
-    dueAt: until
-  });
+    if (parsed.action === 'SKIP') {
+      skipDose(parsed.doseId, 'button');
+      return;
+    }
+
+    const until = new Date(Date.now() + 15 * 60_000);
+    snoozeDose(parsed.doseId, until, 'button');
+    await scheduleDoseReminder({
+      doseId: parsed.doseId,
+      title: 'Medication reminder',
+      body: 'You snoozed this dose for 15 minutes. Taken, snooze, or skip?',
+      dueAt: until
+    });
+  } finally {
+    await Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+  }
 }
 
 export default function RootLayout() {
