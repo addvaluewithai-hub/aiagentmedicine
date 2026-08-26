@@ -51,10 +51,6 @@ function formatLocalTime(timestamp: number, timeZone: string) {
   }
 }
 
-function isDoseTool(name: string) {
-  return name === 'mark_dose_taken' || name === 'snooze_dose' || name === 'skip_dose';
-}
-
 function expectedPlanStatus(name: 'pause_medication_plan' | 'resume_medication_plan') {
   return name === 'pause_medication_plan' ? 'active' : 'paused';
 }
@@ -70,6 +66,7 @@ export async function POST(request: Request) {
   const allowedDoseIds = new Set(parsed.data.doses.map((dose) => dose.doseId));
   const allowedPlans = new Map(parsed.data.plans.map((plan) => [plan.planId, plan]));
 
+  let canonicalPendingConfirmation = null;
   if (parsed.data.pendingConfirmation) {
     const pendingPlan = allowedPlans.get(parsed.data.pendingConfirmation.planId);
     if (
@@ -78,6 +75,14 @@ export async function POST(request: Request) {
     ) {
       return Response.json({ ok: false, error: 'stale-pending-confirmation' }, { status: 409 });
     }
+
+    canonicalPendingConfirmation = {
+      name: parsed.data.pendingConfirmation.name,
+      planId: pendingPlan.planId,
+      medicationName: pendingPlan.medicationName,
+      strength: pendingPlan.strength,
+      reminderTimes: pendingPlan.reminderTimes
+    };
   }
 
   const doseContext = parsed.data.doses.map((dose) => ({
@@ -123,7 +128,7 @@ Critical distinction:
 
 Confirmation protocol for plan tools:
 - Plan tools NEVER execute on the first request, even if the user's first message sounds imperative.
-- On the first clear pause/resume-reminders request, return toolCall null and return pendingConfirmation with the exact action, planId, and medicationName. Ask a concise explicit confirmation question stating that this changes reminders only.
+- On the first clear pause/resume-reminders request, return toolCall null and return pendingConfirmation with the exact action and planId. Ask a concise explicit confirmation question stating that this changes reminders only.
 - A pause pendingConfirmation may target only an active plan. A resume pendingConfirmation may target only a paused plan.
 - Only after PENDING_CONFIRMATION is non-null and the CURRENT USER MESSAGE clearly confirms that exact reminder change may you return the matching plan toolCall.
 - If the user declines or cancels, return toolCall null and pendingConfirmation null and say nothing changed.
@@ -164,7 +169,7 @@ Confirmed plan action examples:
 {"assistantMessage":"string","toolCall":{"name":"pause_medication_plan","planId":"string"},"pendingConfirmation":null}
 {"assistantMessage":"string","toolCall":{"name":"resume_medication_plan","planId":"string"},"pendingConfirmation":null}`;
 
-  const userPayload = `CURRENT_TIME_EPOCH_MS: ${serverNow}\nTIME_ZONE: ${parsed.data.timeZone}\nCURRENT_DOSES:\n${JSON.stringify(doseContext)}\n\nCURRENT_PLANS:\n${JSON.stringify(planContext)}\n\nPENDING_CONFIRMATION:\n${JSON.stringify(parsed.data.pendingConfirmation)}\n\nRECENT_CONVERSATION:\n${historyText}\n\nUSER_MESSAGE:\n${parsed.data.text}`;
+  const userPayload = `CURRENT_TIME_EPOCH_MS: ${serverNow}\nTIME_ZONE: ${parsed.data.timeZone}\nCURRENT_DOSES:\n${JSON.stringify(doseContext)}\n\nCURRENT_PLANS:\n${JSON.stringify(planContext)}\n\nPENDING_CONFIRMATION:\n${JSON.stringify(canonicalPendingConfirmation)}\n\nRECENT_CONVERSATION:\n${historyText}\n\nUSER_MESSAGE:\n${parsed.data.text}`;
 
   const routed = await routeModel({
     apiKey: process.env.AI_API,
@@ -189,17 +194,20 @@ Confirmed plan action examples:
 
   const toolCall = validated.data.toolCall;
   if (toolCall) {
-    if (isDoseTool(toolCall.name)) {
-      if (!('doseId' in toolCall) || !allowedDoseIds.has(toolCall.doseId)) {
+    if ('doseId' in toolCall) {
+      if (!allowedDoseIds.has(toolCall.doseId)) {
         return Response.json({ ok: false, error: 'invalid-tool-target' }, { status: 502 });
       }
     } else {
       const plan = allowedPlans.get(toolCall.planId);
-      const pending = parsed.data.pendingConfirmation;
       if (!plan || plan.status !== expectedPlanStatus(toolCall.name)) {
         return Response.json({ ok: false, error: 'invalid-plan-tool-target' }, { status: 502 });
       }
-      if (!pending || pending.name !== toolCall.name || pending.planId !== toolCall.planId) {
+      if (
+        !canonicalPendingConfirmation ||
+        canonicalPendingConfirmation.name !== toolCall.name ||
+        canonicalPendingConfirmation.planId !== toolCall.planId
+      ) {
         return Response.json({ ok: false, error: 'unconfirmed-plan-tool' }, { status: 502 });
       }
     }
@@ -212,8 +220,11 @@ Confirmed plan action examples:
       return Response.json({ ok: false, error: 'invalid-pending-confirmation' }, { status: 502 });
     }
     pendingConfirmation = {
-      ...pendingConfirmation,
-      medicationName: plan.medicationName
+      name: pendingConfirmation.name,
+      planId: plan.planId,
+      medicationName: plan.medicationName,
+      strength: plan.strength,
+      reminderTimes: plan.reminderTimes
     };
   }
 
