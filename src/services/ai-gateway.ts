@@ -67,7 +67,6 @@ export async function runDoseAgent(input: {
   text: string;
   doses: AgentDoseContext[];
   history: AgentHistoryMessage[];
-  now: number;
   timeZone: string;
 }): Promise<AgentDoseApiResponse> {
   const response = await fetch('/api/agent-dose-action', {
