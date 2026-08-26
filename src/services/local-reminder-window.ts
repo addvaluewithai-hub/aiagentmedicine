@@ -4,7 +4,11 @@ import * as Notifications from 'expo-notifications';
 import { db, initializeDatabase } from '@/db/client';
 import { reminderAttempts } from '@/db/schema';
 import { generateRollingDoseOccurrences } from '@/domain/dose-generation';
-import { getPendingDosesForReminderWindow, type DoseRow } from '@/domain/dose-queries';
+import {
+  getDoseById,
+  getPendingDosesForReminderWindow,
+  type DoseRow
+} from '@/domain/dose-queries';
 import { createLocalId } from '@/lib/id';
 import {
   configureMedicationNotifications,
@@ -45,6 +49,16 @@ type NativeReminderSnapshot = {
   medicationKeys: Set<string>;
   legacyPrimaryDoseIds: Set<string>;
 };
+
+type ReminderWindowResult = {
+  generated: number;
+  scheduled: number;
+  scheduledPrimary: number;
+  scheduledFollowUps: number;
+  notificationsAllowed: boolean;
+};
+
+let reminderWindowQueue: Promise<void> = Promise.resolve();
 
 function reminderKey(doseId: string, reminderAt: number) {
   return `${doseId}:${reminderAt}`;
@@ -103,15 +117,26 @@ export async function scheduleTrackedDoseReminder(input: {
     reminderKind: input.reminderKind
   });
 
-  db.insert(reminderAttempts).values({
-    id: createLocalId('reminder-attempt'),
-    doseOccurrenceId: input.doseId,
-    attemptNumber: nextAttemptNumber(input.doseId),
-    scheduledAt: input.dueAt.getTime(),
-    message: input.body,
-    deliveryStatus: 'scheduled',
-    notificationIdentifier: identifier
-  }).run();
+  const currentDose = getDoseById(input.doseId);
+  if (!currentDose || currentDose.status !== 'pending') {
+    await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
+    throw new Error('dose-no-longer-pending');
+  }
+
+  try {
+    db.insert(reminderAttempts).values({
+      id: createLocalId('reminder-attempt'),
+      doseOccurrenceId: input.doseId,
+      attemptNumber: nextAttemptNumber(input.doseId),
+      scheduledAt: input.dueAt.getTime(),
+      message: input.body,
+      deliveryStatus: 'scheduled',
+      notificationIdentifier: identifier
+    }).run();
+  } catch (cause) {
+    await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
+    throw cause;
+  }
 
   return identifier;
 }
@@ -171,11 +196,11 @@ function buildAdaptiveReminderCandidates(doses: DoseRow[], now: number) {
   return { primary, followUps };
 }
 
-export async function replenishLocalReminderWindow(input?: {
+async function replenishLocalReminderWindowInternal(input?: {
   requestPermission?: boolean;
   horizonDays?: number;
   maxScheduled?: number;
-}) {
+}): Promise<ReminderWindowResult> {
   initializeDatabase();
   const horizonDays = Math.min(Math.max(input?.horizonDays ?? 7, 1), 14);
   const maxScheduled = Math.min(Math.max(input?.maxScheduled ?? 48, 1), 50);
@@ -270,6 +295,19 @@ export async function replenishLocalReminderWindow(input?: {
     scheduledFollowUps,
     notificationsAllowed: true
   };
+}
+
+export function replenishLocalReminderWindow(input?: {
+  requestPermission?: boolean;
+  horizonDays?: number;
+  maxScheduled?: number;
+}) {
+  const task = reminderWindowQueue.then(() => replenishLocalReminderWindowInternal(input));
+  reminderWindowQueue = task.then(
+    () => undefined,
+    () => undefined
+  );
+  return task;
 }
 
 export async function snoozeDoseNotification(dose: DoseRow, until: Date) {
