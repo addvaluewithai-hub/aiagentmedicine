@@ -8,11 +8,7 @@ import {
   clearOnboardingDraft,
   getOnboardingDraft
 } from '@/features/onboarding/draft-store';
-import {
-  configureMedicationNotifications,
-  ensureMedicationNotificationPermission,
-  scheduleDoseReminder
-} from '@/services/notifications';
+import { replenishLocalReminderWindow } from '@/services/local-reminder-window';
 
 export default function ReviewPlanScreen() {
   const router = useRouter();
@@ -24,9 +20,8 @@ export default function ReviewPlanScreen() {
     if (!draft || !ready || isConfirming) return;
     setIsConfirming(true);
 
-    let doses: ReturnType<typeof commitMedicationDraft>['doses'];
     try {
-      ({ doses } = commitMedicationDraft(draft));
+      commitMedicationDraft(draft);
       clearOnboardingDraft();
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : 'unknown-error';
@@ -36,25 +31,8 @@ export default function ReviewPlanScreen() {
     }
 
     try {
-      await configureMedicationNotifications();
-      const notificationsAllowed = await ensureMedicationNotificationPermission();
-
-      if (notificationsAllowed) {
-        const results = await Promise.allSettled(doses.map((dose) => scheduleDoseReminder({
-          doseId: dose.doseId,
-          title: `Time for ${dose.medicationName}`,
-          body: 'Did you take it? You can mark it taken, snooze, or skip.',
-          dueAt: new Date(dose.dueAt)
-        })));
-
-        const failedCount = results.filter((result) => result.status === 'rejected').length;
-        if (failedCount > 0) {
-          Alert.alert(
-            'Plan saved',
-            `${failedCount} reminder${failedCount === 1 ? '' : 's'} could not be scheduled. Your medication plan is safe on this device.`
-          );
-        }
-      } else {
+      const reminderResult = await replenishLocalReminderWindow({ requestPermission: true });
+      if (!reminderResult.notificationsAllowed) {
         Alert.alert(
           'Plan saved, notifications are off',
           'Your medication plan is stored on this device, but reminders cannot appear until notification permission is enabled.'
@@ -93,17 +71,24 @@ export default function ReviewPlanScreen() {
         <Text className="text-base leading-6 text-muted">This is the user-confirmation boundary. The AI draft becomes authoritative only after you confirm it here.</Text>
       </View>
 
-      {draft.medications.map((item, index) => (
-        <View key={`${item.name ?? 'medication'}-${index}`} className="gap-3 rounded-card bg-white p-5">
-          <Text selectable className="text-xl font-bold text-ink">{item.name ?? 'Unknown medication'}</Text>
-          <Text selectable className="text-muted">Strength: {item.strength ?? '—'}</Text>
-          <Text selectable className="text-muted">Dose: {item.doseAmount ?? '—'}</Text>
-          <Text selectable className="text-muted">Frequency: {item.frequency ?? '—'}</Text>
-          {item.mealRelation ? <Text selectable className="text-muted">Meals: {item.mealRelation}</Text> : null}
-          {item.timingText ? <Text selectable className="text-muted">Instructions: {item.timingText}</Text> : null}
-          <Text selectable className="font-semibold text-ink">Reminder times: {item.reminderTimes.join(', ') || '—'}</Text>
-        </View>
-      ))}
+      {draft.medications.map((item, index) => {
+        const scheduleDays = item.scheduleDays === null
+          ? 'Every day'
+          : item.scheduleDays?.join(', ') || '—';
+
+        return (
+          <View key={`${item.name ?? 'medication'}-${index}`} className="gap-3 rounded-card bg-white p-5">
+            <Text selectable className="text-xl font-bold text-ink">{item.name ?? 'Unknown medication'}</Text>
+            <Text selectable className="text-muted">Strength: {item.strength ?? '—'}</Text>
+            <Text selectable className="text-muted">Dose: {item.doseAmount ?? '—'}</Text>
+            <Text selectable className="text-muted">Frequency: {item.frequency ?? '—'}</Text>
+            {item.mealRelation ? <Text selectable className="text-muted">Meals: {item.mealRelation}</Text> : null}
+            {item.timingText ? <Text selectable className="text-muted">Instructions: {item.timingText}</Text> : null}
+            <Text selectable className="text-muted">Days: {scheduleDays}</Text>
+            <Text selectable className="font-semibold text-ink">Reminder times: {item.reminderTimes.join(', ') || '—'}</Text>
+          </View>
+        );
+      })}
 
       {!ready ? (
         <View className="rounded-2xl bg-amber-50 p-4">
