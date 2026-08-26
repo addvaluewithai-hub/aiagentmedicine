@@ -1,3 +1,8 @@
+import type {
+  AgentDoseContext,
+  AgentDoseResponse,
+  AgentHistoryMessage
+} from '@/agent/agent-dose-action-schema';
 import type { MedicationDraft } from '@/ai/medication-draft-schema';
 
 type ExtractMedicationInput = {
@@ -19,6 +24,8 @@ type TranscribeAudioResponse = {
   ok: true;
   transcript: string;
 };
+
+type AgentDoseApiResponse = AgentDoseResponse & { ok: true };
 
 async function parseApiResponse<T extends { ok: true }>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => null) as T | { ok: false; error?: string } | null;
@@ -54,4 +61,19 @@ export async function transcribeAudio(input: {
   });
 
   return parseApiResponse<TranscribeAudioResponse>(response);
+}
+
+export async function runDoseAgent(input: {
+  text: string;
+  doses: AgentDoseContext[];
+  history: AgentHistoryMessage[];
+  timeZone: string;
+}): Promise<AgentDoseApiResponse> {
+  const response = await fetch('/api/agent-dose-action', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input)
+  });
+
+  return parseApiResponse<AgentDoseApiResponse>(response);
 }

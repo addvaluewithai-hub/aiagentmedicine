@@ -48,6 +48,31 @@ export function getUpcomingPendingDoses(limit = 50): DoseRow[] {
     .all();
 }
 
+export function getAgentRelevantPendingDoses(input?: {
+  now?: number;
+  overdueHours?: number;
+  futureHours?: number;
+  limit?: number;
+}): DoseRow[] {
+  initializeDatabase();
+  const now = input?.now ?? Date.now();
+  const overdueHours = Math.min(Math.max(input?.overdueHours ?? 12, 1), 48);
+  const futureHours = Math.min(Math.max(input?.futureHours ?? 24, 1), 72);
+  const limit = Math.min(Math.max(input?.limit ?? 12, 1), 20);
+  const from = now - overdueHours * 60 * 60_000;
+  const to = now + futureHours * 60 * 60_000;
+
+  return baseDoseQuery()
+    .where(and(
+      eq(doseOccurrences.status, 'pending'),
+      gte(doseOccurrences.dueAt, from),
+      lt(doseOccurrences.dueAt, to)
+    ))
+    .orderBy(doseOccurrences.dueAt)
+    .limit(limit)
+    .all();
+}
+
 export function getTodayDoses(): DoseRow[] {
   initializeDatabase();
   const start = new Date();
