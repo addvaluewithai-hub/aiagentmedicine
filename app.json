@@ -2,6 +2,7 @@
   "expo": {
     "name": "Medicine Agent",
     "slug": "aiagentmedicine",
+    "owner": "dragon2026s-team",
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "medicineagent",
@@ -20,7 +21,15 @@
       "output": "server"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "headers": {
+            "Cross-Origin-Embedder-Policy": "credentialless",
+            "Cross-Origin-Opener-Policy": "same-origin"
+          }
+        }
+      ],
       "expo-secure-store",
       [
         "expo-notifications",
@@ -45,6 +54,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "cacb8833-4149-4415-987e-19701993def2"
+      }
     }
   }
 }
