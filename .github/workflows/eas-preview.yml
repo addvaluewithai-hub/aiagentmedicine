@@ -1,0 +1,68 @@
+name: EAS Preview
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+env:
+  EAS_ACCOUNT: dragon2026s-team
+  EAS_PREVIEW_DOMAIN: aiagentmedicine-dragon2026
+  EXPO_PUBLIC_API_BASE_URL: https://aiagentmedicine-dragon2026--preview.expo.app
+
+jobs:
+  deploy-preview:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify required secrets
+        env:
+          AI_API: ${{ secrets.AI_API }}
+        run: |
+          test -n "$EXPO_TOKEN" || (echo "EXPO_TOKEN is missing" && exit 1)
+          test -n "$AI_API" || (echo "AI_API is missing" && exit 1)
+
+      - name: Create or link EAS project
+        run: eas init --account "$EAS_ACCOUNT" --force --non-interactive
+
+      - name: Sync preview server environment
+        env:
+          AI_API: ${{ secrets.AI_API }}
+        run: |
+          eas env:set preview --name AI_API --value "$AI_API" --visibility sensitive --scope project --non-interactive
+          eas env:set preview --name EXPO_PUBLIC_API_BASE_URL --value "$EXPO_PUBLIC_API_BASE_URL" --visibility plaintext --scope project --non-interactive
+
+      - name: Export web and API routes
+        run: npx expo export --platform web
+
+      - name: Deploy hosted preview
+        run: |
+          eas deploy \
+            --environment preview \
+            --alias preview \
+            --dev-domain "$EAS_PREVIEW_DOMAIN" \
+            --non-interactive | tee eas-deploy.log
+
+          echo "## EAS hosted preview" >> "$GITHUB_STEP_SUMMARY"
+          grep -Eo 'https://[A-Za-z0-9.-]+\.expo\.app/?' eas-deploy.log | sort -u | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true
+          echo "- Stable API/app alias: $EXPO_PUBLIC_API_BASE_URL" >> "$GITHUB_STEP_SUMMARY"

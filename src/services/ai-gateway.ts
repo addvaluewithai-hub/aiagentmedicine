@@ -30,6 +30,12 @@ type TranscribeAudioResponse = {
 
 type AgentApiResponse = AgentDoseResponse & { ok: true };
 
+const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, '');
+
+function apiUrl(path: `/api/${string}`) {
+  return configuredApiBaseUrl ? `${configuredApiBaseUrl}${path}` : path;
+}
+
 async function parseApiResponse<T extends { ok: true }>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => null) as T | { ok: false; error?: string } | null;
 
@@ -44,7 +50,7 @@ async function parseApiResponse<T extends { ok: true }>(response: Response): Pro
 }
 
 export async function extractMedication(input: ExtractMedicationInput): Promise<ExtractMedicationResponse> {
-  const response = await fetch('/api/extract-medication', {
+  const response = await fetch(apiUrl('/api/extract-medication'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input)
@@ -57,7 +63,7 @@ export async function transcribeAudio(input: {
   audioBase64: string;
   mimeType: AudioMimeType;
 }): Promise<TranscribeAudioResponse> {
-  const response = await fetch('/api/transcribe-audio', {
+  const response = await fetch(apiUrl('/api/transcribe-audio'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input)
@@ -75,7 +81,7 @@ export async function runMedicationAgent(input: {
   pendingConfirmation: AgentPendingConfirmation | null;
   timeZone: string;
 }): Promise<AgentApiResponse> {
-  const response = await fetch('/api/agent-dose-action', {
+  const response = await fetch(apiUrl('/api/agent-dose-action'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input)
