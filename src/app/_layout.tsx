@@ -3,9 +3,10 @@ import '../../global.css';
 import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, Text, View } from 'react-native';
 
-import { initializeDatabase } from '@/db/client';
+import { initializeDatabaseAsync } from '@/db/client';
 import { markDoseTaken, skipDose, snoozeDose } from '@/domain/dose-actions';
 import { getDoseById } from '@/domain/dose-queries';
 import {
@@ -53,8 +54,31 @@ async function handleMedicationNotificationResponse(response: Notifications.Noti
 }
 
 export default function RootLayout() {
+  const [databaseState, setDatabaseState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [databaseError, setDatabaseError] = useState<string | null>(null);
+
   useEffect(() => {
-    initializeDatabase();
+    let active = true;
+
+    void initializeDatabaseAsync()
+      .then(() => {
+        if (active) setDatabaseState('ready');
+      })
+      .catch((error: unknown) => {
+        console.error('Database initialization failed', error);
+        if (!active) return;
+        setDatabaseError(error instanceof Error ? error.message : 'Unknown database error');
+        setDatabaseState('error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (databaseState !== 'ready' || Platform.OS === 'web') return;
+
     void configureMedicationNotifications();
     void replenishLocalReminderWindow();
 
@@ -67,7 +91,25 @@ export default function RootLayout() {
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [databaseState]);
+
+  if (databaseState === 'loading') {
+    return (
+      <View className="flex-1 items-center justify-center gap-3 bg-white px-6">
+        <ActivityIndicator />
+        <Text className="text-sm text-slate-600">Preparing your medication data…</Text>
+      </View>
+    );
+  }
+
+  if (databaseState === 'error') {
+    return (
+      <View className="flex-1 items-center justify-center gap-3 bg-white px-6">
+        <Text className="text-lg font-semibold text-slate-900">Could not open local medication data</Text>
+        <Text className="text-center text-sm text-slate-600">{databaseError}</Text>
+      </View>
+    );
+  }
 
   return (
     <>
